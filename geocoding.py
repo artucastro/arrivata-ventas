@@ -4,7 +4,7 @@ import time
 import requests
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
-HEADERS = {"User-Agent": "ArrivataSalesApp/1.0 (artucastro14@gmail.com)"}
+HEADERS = {"User-Agent": "ArrivataSalesApp/1.0 (+https://arrivata.com.ar)"}
 
 # Nominatim permite 1 request/segundo. Dejamos un colchón por encima de ese límite.
 REQUEST_DELAY = 1.3          # segundos de pausa entre prospectos en el batch

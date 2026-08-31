@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% block title %}{{ prospect.name }} — Arrivata Sales{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+  <div class="row">
+    <div class="col-12 col-lg-8">
+      <div class="d-flex align-items-center mb-4 gap-3">
+        <a href="{{ url_for('index') }}" class="btn btn-outline-secondary btn-sm">
+          <i class="bi bi-arrow-left"></i>
+        </a>
+        <div>
+          <h1 class="page-title mb-0">{{ prospect.name }}</h1>
+          <div class="text-muted" style="font-size:.8rem">{{ prospect.type }} · {{ prospect.neighborhood }}</div>
+        </div>
+        <div class="ms-auto d-flex gap-2">
+          <a href="{{ url_for('edit_prospect', prospect_id=prospect.id) }}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-pencil me-1"></i>Editar
+          </a>
+          <button class="btn btn-outline-danger btn-sm" onclick="confirmDelete()">
+            <i class="bi bi-trash me-1"></i>Eliminar
+          </button>
+        </div>
+      </div>
+
+      <div class="row g-3 mb-4">
+        <div class="col-md-6">
+          <div class="card border-0 h-100">
+            <div class="card-header">Información</div>
+            <div class="card-body">
+              <dl class="row mb-0 small">
+                <dt class="col-5 text-muted fw-normal">Tipo</dt>
+                <dd class="col-7">{{ prospect.type or '—' }}</dd>
+                <dt class="col-5 text-muted fw-normal">Barrio</dt>
+                <dd class="col-7">{{ prospect.neighborhood or '—' }}</dd>
+                <dt class="col-5 text-muted fw-normal">Zona</dt>
+                <dd class="col-7">{{ prospect.zone or '—' }}</dd>
+                <dt class="col-5 text-muted fw-normal">Dirección</dt>
+                <dd class="col-7">{{ prospect.address or '—' }}</dd>
+                <dt class="col-5 text-muted fw-normal">Premium</dt>
+                <dd class="col-7">
+                  {% if prospect.is_premium %}
+                    <span class="badge" style="background:var(--a-red-light);color:var(--a-red);font-size:.72rem">Sí</span>
+                  {% else %}
+                    <span class="text-muted">No</span>
+                  {% endif %}
+                </dd>
+              </dl>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="card border-0 h-100">
+            <div class="card-header">Contacto</div>
+            <div class="card-body">
+              <dl class="row mb-0 small">
+                <dt class="col-5 text-muted fw-normal">Teléfono</dt>
+                <dd class="col-7">
+                  {% if prospect.phone %}<a href="tel:{{ prospect.phone }}" style="color:var(--a-red)">{{ prospect.phone }}</a>
+                  {% else %}—{% endif %}
+                </dd>
+                <dt class="col-5 text-muted fw-normal">Email</dt>
+                <dd class="col-7">
+                  {% if prospect.email %}<a href="mailto:{{ prospect.email }}" style="color:var(--a-red)">{{ prospect.email }}</a>
+                  {% else %}—{% endif %}
+                </dd>
+                <dt class="col-5 text-muted fw-normal">Instagram</dt>
+                <dd class="col-7">
+                  {% if prospect.instagram %}
+                    <a href="https://instagram.com/{{ prospect.instagram }}" target="_blank" style="color:var(--a-red)">@{{ prospect.instagram }}</a>
+                  {% else %}—{% endif %}
+                </dd>
+                <dt class="col-5 text-muted fw-normal">Website</dt>
+                <dd class="col-7">
+                  {% if prospect.website %}
+                    <a href="{{ prospect.website }}" target="_blank" style="color:var(--a-red)">{{ prospect.website[:30] }}{% if prospect.website|length > 30 %}…{% endif %}</a>
+                  {% else %}—{% endif %}
+                </dd>
+              </dl>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {% if prospect.notes %}
+      <div class="card border-0 mb-3">
+        <div class="card-header">Notas</div>
+        <div class="card-body">
+          <p class="mb-0" style="font-size:.88rem;line-height:1.7">{{ prospect.notes }}</p>
+        </div>
+      </div>
+      {% endif %}
+
+      {% if prospect.products_list %}
+      <div class="card border-0">
+        <div class="card-header">Productos de interés</div>
+        <div class="card-body">
+          {% for prod in prospect.products_list %}
+            <span class="badge bg-light text-muted border me-1 mb-1" style="font-size:.78rem;font-weight:500">{{ prod }}</span>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="col-12 col-lg-4 mt-3 mt-lg-0">
+      <div class="card border-0 mb-3">
+        <div class="card-body text-center py-4">
+          <div class="score-display score-{{ prospect.score_color }}-display">
+            <div class="score-number">{{ prospect.score }}</div>
+            <div class="score-label-text">{{ prospect.score_label }} prioridad</div>
+          </div>
+          <div class="mt-3">
+            <span class="status-badge status-{{ prospect.contact_status | lower | replace(' ', '-') }} fs-6">
+              {{ prospect.contact_status }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {% if prospect.lat and prospect.lng %}
+      <div class="card border-0 mb-3 overflow-hidden" style="height:220px">
+        <div id="miniMap" style="height:100%"></div>
+      </div>
+      {% endif %}
+
+      <div class="card border-0">
+        <div class="card-body">
+          <div class="text-muted" style="font-size:.76rem;line-height:2;letter-spacing:.02em">
+            <div><span class="text-muted">Creado:</span> {{ prospect.created_at[:10] }}</div>
+            <div><span class="text-muted">Actualizado:</span> {{ prospect.updated_at[:10] }}</div>
+            <div><span class="text-muted">ID:</span> #{{ prospect.id }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="deleteModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title" style="font-family:'Amiri',serif;font-weight:400">Eliminar</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pt-2 text-muted small">¿Eliminar <strong>{{ prospect.name }}</strong>?</div>
+      <div class="modal-footer border-0 pt-0">
+        <button class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <form method="POST" action="{{ url_for('delete_prospect', prospect_id=prospect.id) }}">
+          <button type="submit" class="btn btn-danger btn-sm">Eliminar</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% if prospect.lat and prospect.lng %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const map = L.map('miniMap', {zoomControl:false, scrollWheelZoom:false})
+  .setView([{{ prospect.lat }}, {{ prospect.lng }}], 15);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+L.circleMarker([{{ prospect.lat }}, {{ prospect.lng }}], {
+  radius: 8, color: '#B21F18', fillColor: '#B21F18', fillOpacity: .8, weight: 2
+}).addTo(map);
+</script>
+{% endif %}
+<script>
+function confirmDelete() {
+  new bootstrap.Modal(document.getElementById('deleteModal')).show();
+}
+</script>
+{% endblock %}

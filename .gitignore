@@ -1,0 +1,27 @@
+# ─── Secretos / credenciales (NUNCA subir) ───────────────────────────
+.env
+credentials/
+*.pem
+*.key
+config.json
+
+# ─── Base de datos local (datos de negocio) ──────────────────────────
+arrivata.db
+*.sqlite
+*.sqlite3
+
+# ─── Python ──────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# ─── Editor / OS / herramientas ──────────────────────────────────────
+.claude/settings.local.json
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log

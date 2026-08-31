@@ -1,0 +1,250 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Arrivata Sales{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+
+  <!-- Page header -->
+  <div class="d-flex align-items-baseline gap-3 mb-4">
+    <h1 class="page-title mb-0">Prospectos</h1>
+    <span class="text-muted" style="font-size:.82rem">CABA &amp; AMBA</span>
+  </div>
+
+  <!-- Stats Cards -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="card stat-card border-0 h-100">
+        <div class="card-body">
+          <div class="d-flex align-items-center gap-3">
+            <div class="stat-icon bg-navy-soft">
+              <i class="bi bi-people" style="color:var(--a-dark);font-size:1.1rem"></i>
+            </div>
+            <div>
+              <div class="stat-number">{{ stats.total }}</div>
+              <div class="stat-label">Total</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card stat-card border-0 h-100">
+        <div class="card-body">
+          <div class="d-flex align-items-center gap-3">
+            <div class="stat-icon bg-red-soft">
+              <i class="bi bi-star" style="color:var(--a-red);font-size:1.1rem"></i>
+            </div>
+            <div>
+              <div class="stat-number" style="color:var(--a-red)">{{ stats.high_priority }}</div>
+              <div class="stat-label">Alta prioridad</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card stat-card border-0 h-100">
+        <div class="card-body">
+          <div class="d-flex align-items-center gap-3">
+            <div class="stat-icon bg-amber-soft">
+              <i class="bi bi-telephone" style="color:#c68700;font-size:1.1rem"></i>
+            </div>
+            <div>
+              <div class="stat-number" style="color:#c68700">{{ stats.contacted }}</div>
+              <div class="stat-label">Contactados</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="card stat-card border-0 h-100">
+        <div class="card-body">
+          <div class="d-flex align-items-center gap-3">
+            <div class="stat-icon bg-green-soft">
+              <i class="bi bi-bag-check" style="color:#2e7d52;font-size:1.1rem"></i>
+            </div>
+            <div>
+              <div class="stat-number" style="color:#2e7d52">{{ stats.clients }}</div>
+              <div class="stat-label">Clientes</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="card border-0 filter-card mb-3">
+    <div class="card-body">
+      <form method="GET" class="row g-2 align-items-end">
+        <div class="col-12 col-md-3">
+          <input type="text" name="search" class="form-control form-control-sm"
+                 placeholder="Buscar nombre, dirección..." value="{{ filters.search }}">
+        </div>
+        <div class="col-6 col-md-2">
+          <select name="province" class="form-select form-select-sm">
+            <option value="">Todas las provincias</option>
+            <option value="CABA" {% if filters.province == 'CABA' %}selected{% endif %}>CABA</option>
+            <option value="GBA" {% if filters.province == 'GBA' %}selected{% endif %}>Buenos Aires (GBA)</option>
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <select name="neighborhood" class="form-select form-select-sm">
+            <option value="">Todos los barrios</option>
+            {% for n in neighborhoods %}
+              <option value="{{ n }}" {% if filters.neighborhood == n %}selected{% endif %}>{{ n }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <select name="contact_status" class="form-select form-select-sm">
+            <option value="">Todos los estados</option>
+            {% for s in contact_statuses %}
+              <option value="{{ s }}" {% if filters.contact_status == s %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-6 col-md-2">
+          <select name="min_score" class="form-select form-select-sm">
+            <option value="">Cualquier score</option>
+            <option value="8" {% if filters.min_score == '8' %}selected{% endif %}>Alta prioridad (8+)</option>
+            <option value="5" {% if filters.min_score == '5' %}selected{% endif %}>Media o alta (5+)</option>
+          </select>
+        </div>
+        <div class="col-3 col-md-1">
+          <button type="submit" class="btn btn-arrivata btn-sm w-100">
+            <i class="bi bi-funnel-fill"></i>
+          </button>
+        </div>
+        <div class="col-3 col-md-1">
+          <a href="{{ url_for('index') }}" class="btn btn-outline-secondary btn-sm w-100">
+            <i class="bi bi-x-lg"></i>
+          </a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Prospects Table -->
+  <div class="card border-0">
+    <div class="card-body p-0">
+      {% if prospects %}
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0 prospects-table">
+          <thead>
+            <tr>
+              <th class="ps-4">Nombre</th>
+              <th>Tipo</th>
+              <th>Barrio</th>
+              <th class="text-center">Score</th>
+              <th>Estado</th>
+              <th>Productos</th>
+              <th class="text-end pe-4">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in prospects %}
+            <tr>
+              <td class="ps-4" style="min-width:180px">
+                <a href="{{ url_for('view_prospect', prospect_id=p.id) }}" class="prospect-name">
+                  {{ p.name }}
+                </a>
+                {% if p.address %}
+                  <div class="text-muted" style="font-size:.75rem">{{ p.address }}</div>
+                {% endif %}
+              </td>
+              <td>
+                <span style="font-size:.78rem;color:var(--a-gray)">{{ p.type }}</span>
+              </td>
+              <td style="font-size:.82rem">{{ p.neighborhood }}</td>
+              <td class="text-center">
+                <span class="score-badge badge-{{ p.score_color }}" title="{{ p.score_label }} prioridad">
+                  {{ p.score }}
+                </span>
+              </td>
+              <td>
+                <span class="status-badge status-{{ p.contact_status | lower | replace(' ', '-') }}">
+                  {{ p.contact_status }}
+                </span>
+              </td>
+              <td>
+                {% for prod in p.products_list[:2] %}
+                  <span class="badge bg-light text-muted border me-1" style="font-size:.7rem;font-weight:500">{{ prod }}</span>
+                {% endfor %}
+                {% if p.products_list | length > 2 %}
+                  <span class="text-muted" style="font-size:.74rem">+{{ p.products_list | length - 2 }}</span>
+                {% endif %}
+              </td>
+              <td class="text-end pe-4">
+                <div class="btn-group btn-group-sm">
+                  <a href="{{ url_for('view_prospect', prospect_id=p.id) }}" class="btn btn-outline-secondary" title="Ver">
+                    <i class="bi bi-eye"></i>
+                  </a>
+                  <a href="{{ url_for('edit_prospect', prospect_id=p.id) }}" class="btn btn-outline-secondary" title="Editar">
+                    <i class="bi bi-pencil"></i>
+                  </a>
+                  <button class="btn btn-outline-danger" title="Eliminar"
+                          onclick="confirmDelete({{ p.id }}, '{{ p.name | replace("'","\\'")|e }}')">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-center py-5">
+        <i class="bi bi-inbox fs-1" style="color:var(--a-light-gray)"></i>
+        <p class="mt-3 mb-1" style="font-family:'Amiri',serif;font-size:1.2rem;color:var(--a-gray)">No hay prospectos todavía</p>
+        <p class="text-muted small mb-4">Usá la Búsqueda IA para encontrar clientes potenciales por barrio.</p>
+        <a href="{{ url_for('search_view') }}" class="btn btn-arrivata me-2">
+          <i class="bi bi-stars me-1"></i>Buscar con IA
+        </a>
+        <a href="{{ url_for('add_prospect') }}" class="btn btn-outline-secondary">
+          <i class="bi bi-plus-lg me-1"></i>Agregar manualmente
+        </a>
+      </div>
+      {% endif %}
+    </div>
+    {% if prospects %}
+    <div class="card-footer py-2 px-4" style="background:var(--a-bg-2);border-top:1px solid var(--a-border);font-size:.75rem;color:var(--a-light-gray);letter-spacing:.04em">
+      {{ prospects | length }} PROSPECTO{{ 'S' if prospects | length != 1 else '' }}
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Delete Confirm Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title" style="font-family:'Amiri',serif;font-weight:400">Eliminar prospecto</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body pt-2">
+        <p class="mb-0 text-muted small">¿Eliminar <strong id="deleteProspectName"></strong>?</p>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancelar</button>
+        <form id="deleteForm" method="POST">
+          <button type="submit" class="btn btn-danger btn-sm">Eliminar</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function confirmDelete(id, name) {
+  document.getElementById('deleteProspectName').textContent = name;
+  document.getElementById('deleteForm').action = '/prospecto/' + id + '/eliminar';
+  new bootstrap.Modal(document.getElementById('deleteModal')).show();
+}
+</script>
+{% endblock %}

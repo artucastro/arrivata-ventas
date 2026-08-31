@@ -1,0 +1,244 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editar' if action == 'edit' else 'Nuevo prospecto' }} — Arrivata Sales{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+  <div class="row justify-content-center">
+    <div class="col-12 col-xl-10">
+
+      <div class="d-flex align-items-center mb-4 gap-3">
+        <a href="{{ url_for('index') }}" class="btn btn-outline-secondary btn-sm">
+          <i class="bi bi-arrow-left"></i>
+        </a>
+        <h1 class="page-title mb-0">
+          {{ 'Editar prospecto' if action == 'edit' else 'Nuevo prospecto' }}
+          {% if action == 'edit' %}
+            <span style="color:var(--a-light-gray);font-size:1rem;font-family:'Inter',sans-serif;font-weight:300"> — {{ prospect.name }}</span>
+          {% endif %}
+        </h1>
+      </div>
+
+      <form method="POST" id="prospectForm">
+        <div class="row g-4">
+
+          <!-- Left -->
+          <div class="col-12 col-lg-8">
+            <div class="card border-0 mb-4">
+              <div class="card-header">Información del local</div>
+              <div class="card-body">
+                <div class="row g-3">
+                  <div class="col-12">
+                    <label class="form-label">Nombre <span style="color:var(--a-red)">*</span></label>
+                    <input type="text" name="name" class="form-control" required
+                           value="{{ prospect.name if prospect else '' }}">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label">Tipo de local</label>
+                    <select name="type" class="form-select" id="typeSelect" onchange="updateScore()">
+                      <option value="">Seleccioná...</option>
+                      {% for t in types %}
+                        <option value="{{ t }}" {% if prospect and prospect.type == t %}selected{% endif %}>{{ t }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label">Estado de contacto</label>
+                    <select name="contact_status" class="form-select">
+                      {% for s in contact_statuses %}
+                        <option value="{{ s }}" {% if prospect and prospect.contact_status == s %}selected{% endif %}>{{ s }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div class="col-md-5">
+                    <label class="form-label">Barrio</label>
+                    <select name="neighborhood" class="form-select" id="neighborhoodSelect" onchange="updateScore()">
+                      <option value="">Seleccioná...</option>
+                      {% for n in neighborhoods %}
+                        <option value="{{ n }}" {% if prospect and prospect.neighborhood == n %}selected{% endif %}>{{ n }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div class="col-md-3">
+                    <label class="form-label">Zona</label>
+                    <select name="zone" class="form-select">
+                      {% for z in zones %}
+                        <option value="{{ z }}" {% if prospect and prospect.zone == z %}selected{% endif %}>{{ z }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div class="col-md-4 d-flex align-items-end pb-1">
+                    <div class="form-check">
+                      <input type="checkbox" name="is_premium" class="form-check-input" id="isPremium"
+                             onchange="updateScore()"
+                             {% if prospect and prospect.is_premium %}checked{% endif %}>
+                      <label class="form-check-label" for="isPremium" style="font-size:.83rem">
+                        Local premium / gourmet
+                      </label>
+                    </div>
+                  </div>
+                  <div class="col-12">
+                    <label class="form-label">Dirección</label>
+                    <div class="input-group">
+                      <input type="text" name="address" class="form-control" id="addressInput"
+                             placeholder="Ej: Thames 1234"
+                             value="{{ prospect.address if prospect else '' }}">
+                      <button type="button" class="btn btn-outline-secondary" onclick="geocodeAddress()">
+                        <i class="bi bi-geo-alt"></i>
+                      </button>
+                    </div>
+                    <div class="form-text" id="geocodeStatus"></div>
+                  </div>
+                  <input type="hidden" name="lat" id="latInput" value="{{ prospect.lat if prospect else '' }}">
+                  <input type="hidden" name="lng" id="lngInput" value="{{ prospect.lng if prospect else '' }}">
+                </div>
+              </div>
+            </div>
+
+            <div class="card border-0 mb-4">
+              <div class="card-header">Contacto</div>
+              <div class="card-body">
+                <div class="row g-3">
+                  <div class="col-md-6">
+                    <label class="form-label">Teléfono</label>
+                    <input type="text" name="phone" class="form-control"
+                           value="{{ prospect.phone if prospect else '' }}">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label">Email</label>
+                    <input type="email" name="email" class="form-control"
+                           value="{{ prospect.email if prospect else '' }}">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label">Instagram</label>
+                    <div class="input-group">
+                      <span class="input-group-text">@</span>
+                      <input type="text" name="instagram" class="form-control"
+                             value="{{ prospect.instagram if prospect else '' }}">
+                    </div>
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label">Website</label>
+                    <input type="text" name="website" class="form-control"
+                           placeholder="https://..."
+                           value="{{ prospect.website if prospect else '' }}">
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card border-0">
+              <div class="card-header">Notas</div>
+              <div class="card-body">
+                <textarea name="notes" class="form-control" rows="3"
+                          placeholder="Observaciones, contexto, próximos pasos...">{{ prospect.notes if prospect else '' }}</textarea>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right -->
+          <div class="col-12 col-lg-4">
+            <div class="card border-0 mb-4">
+              <div class="card-header">Score de prioridad</div>
+              <div class="card-body text-center py-4">
+                <div class="score-display" id="scoreDisplay">
+                  <div class="score-number" id="scoreNumber">{{ prospect.score if prospect else 5 }}</div>
+                  <div class="score-label-text" id="scoreLabel">—</div>
+                </div>
+                <div class="mt-4 px-2">
+                  <label class="form-label">Ajuste manual (1–10)</label>
+                  <input type="range" name="score" class="form-range" min="1" max="10" id="scoreRange"
+                         value="{{ prospect.score if prospect else 5 }}"
+                         oninput="document.getElementById('scoreNumber').textContent = this.value; updateScoreColor(parseInt(this.value))">
+                </div>
+                <p class="text-muted mt-2" style="font-size:.75rem">
+                  Se calcula automáticamente según tipo, barrio y si es premium.
+                </p>
+              </div>
+            </div>
+
+            <div class="card border-0">
+              <div class="card-header">Productos de interés</div>
+              <div class="card-body">
+                {% for prod in products %}
+                <div class="form-check mb-2">
+                  <input type="checkbox" name="products_interest" value="{{ prod }}"
+                         class="form-check-input" id="prod_{{ loop.index }}"
+                         {% if prospect and prod in (prospect.products_list or []) %}checked{% endif %}>
+                  <label class="form-check-label" for="prod_{{ loop.index }}" style="font-size:.82rem">{{ prod }}</label>
+                </div>
+                {% endfor %}
+                <button type="button" class="btn btn-link btn-sm p-0 mt-1"
+                        style="color:var(--a-red);font-size:.78rem"
+                        onclick="toggleAllProducts()">
+                  Seleccionar todos
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="d-flex justify-content-end gap-2 mt-4">
+          <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">Cancelar</a>
+          <button type="submit" class="btn btn-arrivata px-4">
+            <i class="bi bi-check-lg me-1"></i>
+            {{ 'Guardar cambios' if action == 'edit' else 'Crear prospecto' }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function updateScoreColor(val) {
+  const disp = document.getElementById('scoreDisplay');
+  const lbl  = document.getElementById('scoreLabel');
+  disp.className = 'score-display';
+  if (val >= 8)      { disp.classList.add('score-high'); lbl.textContent = 'Alta prioridad'; }
+  else if (val >= 5) { disp.classList.add('score-med');  lbl.textContent = 'Prioridad media'; }
+  else               { disp.classList.add('score-low');  lbl.textContent = 'Prioridad baja'; }
+}
+
+function updateScore() {
+  const tipo    = document.getElementById('typeSelect').value;
+  const barrio  = document.getElementById('neighborhoodSelect').value;
+  const premium = document.getElementById('isPremium').checked ? '1' : '0';
+  fetch(`/api/score?type=${encodeURIComponent(tipo)}&neighborhood=${encodeURIComponent(barrio)}&is_premium=${premium}`)
+    .then(r => r.json())
+    .then(data => {
+      document.getElementById('scoreRange').value = data.score;
+      document.getElementById('scoreNumber').textContent = data.score;
+      updateScoreColor(data.score);
+    });
+}
+
+function geocodeAddress() {
+  const address = document.getElementById('addressInput').value;
+  const barrio  = document.getElementById('neighborhoodSelect').value;
+  const status  = document.getElementById('geocodeStatus');
+  if (!address) { status.textContent = 'Ingresá una dirección primero.'; return; }
+  status.innerHTML = '<span class="text-muted">Buscando coordenadas...</span>';
+  fetch(`/api/geocode?address=${encodeURIComponent(address)}&neighborhood=${encodeURIComponent(barrio)}`)
+    .then(r => r.json())
+    .then(data => {
+      if (data.lat && data.lng) {
+        document.getElementById('latInput').value = data.lat;
+        document.getElementById('lngInput').value = data.lng;
+        status.innerHTML = `<span style="color:#2e7d52"><i class="bi bi-check-circle me-1"></i>Ubicación encontrada</span>`;
+      } else {
+        status.innerHTML = `<span style="color:var(--a-red)"><i class="bi bi-exclamation-circle me-1"></i>No se encontró la dirección. El prospecto se guardará sin pin en el mapa.</span>`;
+      }
+    });
+}
+
+function toggleAllProducts() {
+  const cbs = document.querySelectorAll('input[name="products_interest"]');
+  const allChecked = [...cbs].every(c => c.checked);
+  cbs.forEach(c => c.checked = !allChecked);
+}
+
+updateScoreColor(parseInt(document.getElementById('scoreRange').value));
+</script>
+{% endblock %}

@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}Google Sheets — Arrivata Sales{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+  <div class="row justify-content-center">
+    <div class="col-12 col-lg-8">
+      <h1 class="page-title mb-4">
+        <i class="bi bi-table me-2" style="color:var(--a-red)"></i>Google Sheets
+      </h1>
+
+      <!-- Step 1: Import existing data -->
+      <div class="card border-0 mb-4" style="border-left: 4px solid var(--a-red) !important;">
+        <div class="card-header d-flex align-items-center gap-2">
+          <span class="badge rounded-pill" style="background:var(--a-red);font-size:.75rem">PASO 1</span>
+          Cargar los locales existentes del spreadsheet
+        </div>
+        <div class="card-body">
+          <p class="text-muted mb-3" style="font-size:.88rem">
+            Lee los <strong>41 locales</strong> que ya tenés en tu spreadsheet y los importa a la app.
+            No requiere credenciales — solo necesita que el sheet sea público (ya está configurado).
+          </p>
+          <div class="d-flex align-items-center gap-3">
+            <form method="POST">
+              <input type="hidden" name="action" value="import_from_sheets">
+              <button type="submit" class="btn btn-arrivata">
+                <i class="bi bi-cloud-download me-2"></i>Importar desde Google Sheets
+              </button>
+            </form>
+            {% if total > 0 %}
+            <span class="text-muted small">
+              <i class="bi bi-check-circle text-success me-1"></i>
+              {{ total }} prospecto{{ 's' if total != 1 else '' }} en la app actualmente
+            </span>
+            {% endif %}
+          </div>
+          <div class="mt-2" style="font-size:.77rem;color:var(--a-light-gray)">
+            Spreadsheet: <code>{{ spreadsheet_id }}</code>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 2: Geocode -->
+      <div class="card border-0 mb-4" style="border-left: 4px solid #c68700 !important;">
+        <div class="card-header d-flex align-items-center gap-2">
+          <span class="badge rounded-pill" style="background:#c68700;font-size:.75rem">PASO 2</span>
+          Geocodificar para verlos en el mapa
+        </div>
+        <div class="card-body">
+          <p class="text-muted mb-3" style="font-size:.88rem">
+            Busca las coordenadas de cada local para que aparezcan en el mapa.
+            Puede tardar ~1 minuto (respeta el límite de la API de geocodificación).
+          </p>
+          <form method="POST">
+            <input type="hidden" name="action" value="geocode_all">
+            <button type="submit" class="btn btn-outline-secondary">
+              <i class="bi bi-geo-alt me-2"></i>Geocodificar todos los prospectos
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Step 3: Write credentials -->
+      <div class="card border-0 mb-4" style="border-left: 4px solid #2e7d52 !important;">
+        <div class="card-header d-flex align-items-center gap-2">
+          <span class="badge rounded-pill" style="background:#2e7d52;font-size:.75rem">PASO 3</span>
+          Configurar escritura al spreadsheet
+          {% if config.sheets_enabled %}
+            <span class="ms-auto badge" style="background:#e8f5ee;color:#2e7d52;font-size:.72rem">
+              <i class="bi bi-check-circle me-1"></i>Activo
+            </span>
+          {% endif %}
+        </div>
+        <div class="card-body">
+          <p class="text-muted mb-3" style="font-size:.88rem">
+            Para que los nuevos prospectos que importes desde IA se vuelquen automáticamente al spreadsheet,
+            necesitás subir las credenciales de tu Service Account de Google.
+          </p>
+
+          <form method="POST" enctype="multipart/form-data">
+            <input type="hidden" name="action" value="save_config">
+            <div class="mb-3">
+              <label class="form-label">Credenciales JSON (Service Account)</label>
+              <input type="file" name="credentials_file" class="form-control" accept=".json">
+              {% if config.sheets_credentials_path %}
+                <div class="form-text" style="color:#2e7d52">
+                  <i class="bi bi-check-circle me-1"></i>Archivo cargado: <code>{{ config.sheets_credentials_path.split('\\')[-1] }}</code>
+                </div>
+              {% endif %}
+            </div>
+            <button type="submit" class="btn btn-outline-secondary btn-sm">
+              <i class="bi bi-upload me-1"></i>Subir credenciales
+            </button>
+          </form>
+
+          {% if config.sheets_enabled %}
+          <div class="d-flex gap-2 flex-wrap mt-3">
+            <form method="POST">
+              <input type="hidden" name="action" value="test">
+              <button type="submit" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-lightning me-1"></i>Probar conexión
+              </button>
+            </form>
+            <form method="POST">
+              <input type="hidden" name="action" value="sync_to_sheets">
+              <button type="submit" class="btn btn-arrivata btn-sm">
+                <i class="bi bi-arrow-repeat me-1"></i>Sincronizar todo al spreadsheet
+              </button>
+            </form>
+          </div>
+          {% endif %}
+
+          {% if config.last_sync %}
+          <div class="mt-3 text-muted" style="font-size:.76rem">
+            <i class="bi bi-clock me-1"></i>Última sincronización: {{ config.last_sync }}
+          </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Setup instructions -->
+      <div class="card border-0">
+        <div class="card-header">
+          <i class="bi bi-info-circle me-2" style="color:var(--a-red)"></i>
+          Cómo crear las credenciales (una sola vez)
+        </div>
+        <div class="card-body">
+          <ol style="font-size:.85rem;line-height:2.2;color:var(--a-gray);padding-left:1.2rem">
+            <li>Andá a <a href="https://console.cloud.google.com" target="_blank" style="color:var(--a-red)">console.cloud.google.com</a> → creá un proyecto nuevo.</li>
+            <li>Activá la <strong>Google Sheets API</strong> y la <strong>Google Drive API</strong>.</li>
+            <li>Creá una <strong>Cuenta de servicio</strong>: IAM → Credenciales → + Crear credenciales.</li>
+            <li>Generá una clave JSON: click en la cuenta → Claves → Agregar clave → JSON.</li>
+            <li>Abrí tu spreadsheet → <strong>Compartir</strong> → pegá el email de la service account → Rol: <strong>Editor</strong>.</li>
+            <li>Subí el JSON en el Paso 3 de arriba.</li>
+          </ol>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}

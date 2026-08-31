@@ -1,0 +1,9 @@
+{
+  "sheets_credentials_path": "credentials/google_credentials.json",
+  "sheets_enabled": false,
+  "last_sync": null,
+  "sheets_csv_url": "https://docs.google.com/spreadsheets/d/e/XXXXX/pub?output=csv",
+  "sheets_spreadsheet_key": "CLAVE_DEL_SPREADSHEET_PARA_ESCRITURA",
+  "sheets_gid": "0",
+  "anthropic_api_key": ""
+}

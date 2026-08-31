@@ -2,7 +2,7 @@ import sqlite3
 import os
 from datetime import datetime
 
-DB_PATH = os.path.join(os.path.dirname(__file__), 'arrivata.db')
+DB_PATH = os.environ.get('ARRIVATA_DB_PATH') or os.path.join(os.path.dirname(__file__), 'arrivata.db')
 
 # Campos que se cargan / ajustan a mano en la app: una importación (Sheets o IA)
 # NUNCA los pisa cuando el prospecto ya existe, aunque el origen traiga otro valor.

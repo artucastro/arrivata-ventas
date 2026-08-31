@@ -1,4 +1,5 @@
 import csv
+import hmac
 import io
 import os
 import secrets
@@ -13,12 +14,34 @@ import scoring as sc
 from config_manager import load_config, save_config
 from geocoding import geocode
 
-load_dotenv(override=True)
+# Carga el .env de la carpeta del proyecto sin importar el working directory
+# (necesario cuando corre bajo un servidor WSGI, p. ej. PythonAnywhere).
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"), override=True)
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "arrivata-secret-2024")
 
 db.init_db()
+
+
+# ─── Login (HTTP Basic) ─────────────────────────────────────────────────────
+# Si APP_PASSWORD está seteada (deploy), se pide usuario+contraseña en todas las
+# rutas. Si no está (uso local), no hay login.
+
+APP_USER = os.getenv("APP_USER", "arrivata")
+APP_PASSWORD = os.getenv("APP_PASSWORD", "")
+
+
+@app.before_request
+def _require_login():
+    if not APP_PASSWORD:
+        return
+    auth = request.authorization
+    if (auth and hmac.compare_digest(auth.username or "", APP_USER)
+            and hmac.compare_digest(auth.password or "", APP_PASSWORD)):
+        return
+    return Response('Acceso restringido.', 401,
+                    {'WWW-Authenticate': 'Basic realm="Arrivata Sales"'})
 
 
 # ─── Server-side search-results store ───────────────────────────────────────
@@ -526,5 +549,6 @@ def api_geocode():
 
 
 if __name__ == '__main__':
+    debug = os.getenv("FLASK_DEBUG", "1") == "1"
     print("\n  Arrivata Sales Tool corriendo en: http://localhost:5001\n")
-    app.run(debug=True, host='127.0.0.1', port=5001)
+    app.run(debug=debug, host='127.0.0.1', port=5001)

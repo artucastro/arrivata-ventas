@@ -4,7 +4,7 @@ import re
 import anthropic
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"), override=True)
 
 _PRODUCTS_DESC = """- Burrata, Bocconcino Fior di Latte, Bocconcino De Bufala
 - Stracciatella Fior di Latte, Stracciatella De Bufala

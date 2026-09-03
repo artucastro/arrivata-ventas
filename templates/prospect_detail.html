@@ -53,8 +53,8 @@
                 <dd class="col-7">{{ volume_label }}</dd>
                 <dt class="col-5 text-muted fw-normal">Precio</dt>
                 <dd class="col-7">
-                  {% if prospect.price_range and prospect.price_range != 'desconocido' %}
-                    {{ prospect.price_range }}
+                  {% if price_range_label %}
+                    {{ price_range_label }}
                   {% else %}<span class="text-muted">Sin evaluar</span>{% endif %}
                 </dd>
                 <dt class="col-5 text-muted fw-normal">Rating Google</dt>

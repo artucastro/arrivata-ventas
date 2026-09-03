@@ -403,6 +403,7 @@ def view_prospect(prospect_id):
         'prospect_detail.html', prospect=prospect,
         supplier_label=dict(sc.CURRENT_SUPPLIERS).get(prospect.get('current_supplier'), '—'),
         volume_label=dict(sc.POTENTIAL_VOLUMES).get(prospect.get('potential_volume'), '—'),
+        price_range_label=sc.PRICE_RANGE_LABELS.get(prospect.get('price_range')),
     )
 
 

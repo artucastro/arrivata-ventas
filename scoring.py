@@ -191,6 +191,17 @@ DISPLAY_SCORE_OPTIONS = [
     ("manual", "Manual"),
 ]
 
+# Label legible para el price_range que trae la búsqueda con IA — el símbolo
+# solo ($$$) no se entiende sin conocer la convención de antemano.
+# 'desconocido' no entra acá: ese caso lo resuelve aparte el propio template
+# (nunca hay un símbolo pelado que explicar).
+PRICE_RANGE_LABELS = {
+    "$":    "$ · Económico",
+    "$$":   "$$ · Moderado",
+    "$$$":  "$$$ · Caro",
+    "$$$$": "$$$$ · Muy caro",
+}
+
 # ── Dimensión 1 — Potencial de volumen (hasta 3 pts) ──────────────────────────
 VOLUME_POINTS = {
     "alto":        3.0,

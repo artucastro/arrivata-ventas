@@ -283,9 +283,12 @@ def get_all_prospects(filters=None):
         if filters.get('contact_status'):
             conditions.append('contact_status = ?')
             params.append(filters['contact_status'])
-        if filters.get('min_score'):
-            conditions.append('score >= ?')
-            params.append(int(filters['min_score']))
+        if filters.get('tier') == 'A':
+            conditions.append('score_auto >= ?')
+            params.append(sc.TIER_A_MIN)
+        elif filters.get('tier') == 'AB':
+            conditions.append('score_auto >= ?')
+            params.append(sc.TIER_B_MIN)
         if filters.get('search'):
             conditions.append('(name LIKE ? OR address LIKE ? OR notes LIKE ?)')
             term = f"%{filters['search']}%"
@@ -293,7 +296,9 @@ def get_all_prospects(filters=None):
         if conditions:
             query += ' WHERE ' + ' AND '.join(conditions)
 
-    query += ' ORDER BY score DESC, name ASC'
+    # Ordenado por la vara de prioridad (score_auto), no por el ajuste manual.
+    # NULLS LAST es defensivo: con el wiring actual no debería haber NULL.
+    query += ' ORDER BY score_auto DESC NULLS LAST, name ASC'
     cursor = conn.execute(query, params)
     prospects = [dict(row) for row in cursor.fetchall()]
     conn.close()
@@ -433,7 +438,10 @@ def delete_prospect(prospect_id):
 def get_stats():
     conn = get_db()
     total = conn.execute('SELECT COUNT(*) FROM prospects').fetchone()[0]
-    high_priority = conn.execute('SELECT COUNT(*) FROM prospects WHERE score >= 7').fetchone()[0]
+    # "Alta prioridad" = Tier A por score_auto (la vara), no el ajuste manual.
+    high_priority = conn.execute(
+        'SELECT COUNT(*) FROM prospects WHERE score_auto >= ?', (sc.TIER_A_MIN,)
+    ).fetchone()[0]
     contacted = conn.execute(
         "SELECT COUNT(*) FROM prospects WHERE contact_status NOT IN ('Pendiente')"
     ).fetchone()[0]

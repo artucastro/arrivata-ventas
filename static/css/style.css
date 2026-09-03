@@ -276,6 +276,7 @@ h1, h2, h3, h4, h5, .font-serif {
 .badge-success { background: #2e7d52; }
 .badge-warning { background: #c68700; color: #fff; }
 .badge-danger  { background: var(--a-red); }
+.badge-neutral { background: #64748b; }   /* Tier C: gris, no rojo */
 
 /* ── Status Badges ── */
 .status-badge {

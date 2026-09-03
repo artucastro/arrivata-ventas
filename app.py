@@ -160,7 +160,7 @@ def index():
         'neighborhood': request.args.get('neighborhood', ''),
         'type': request.args.get('type', ''),
         'contact_status': request.args.get('contact_status', ''),
-        'min_score': request.args.get('min_score', ''),
+        'tier': request.args.get('tier', ''),   # '' | 'A' | 'AB' — sobre score_auto
         'search': request.args.get('search', ''),
     }
     prospects = db.get_all_prospects({k: v for k, v in filters.items() if v})
@@ -168,6 +168,11 @@ def index():
     neighborhoods = db.get_distinct_values('neighborhood')
 
     for p in prospects:
+        # Prioridad = score_auto (la vara). score_color/score_label (sobre el
+        # score manual) quedan solo para el detalle chico "ajuste manual".
+        if p.get('score_auto') is not None:
+            p['tier'] = sc.priority_tier(p['score_auto'])
+            p['tier_badge_class'] = sc.tier_badge_class(p['score_auto'])
         p['score_color'] = sc.score_color(p['score'])
         p['score_label'] = sc.score_label(p['score'])
         p['products_list'] = [x for x in p.get('products_interest', '').split('|') if x]

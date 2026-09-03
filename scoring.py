@@ -303,6 +303,17 @@ def priority_tier(score_auto) -> str:
     return "C"
 
 
+# Mismo esquema de color que la ficha individual (prospect_detail.html):
+# verde = A, ámbar = B, gris = C (no rojo: Tier C no es "problema", es "sin evaluar").
+TIER_BADGE_CLASS = {"A": "success", "B": "warning", "C": "neutral"}
+
+
+def tier_badge_class(score_auto) -> str:
+    """'success' | 'warning' | 'neutral' según el tier de score_auto (para
+    `badge-{{ ... }}` / `score-{{ ... }}-display`)."""
+    return TIER_BADGE_CLASS[priority_tier(score_auto)]
+
+
 def score_color(score: int) -> str:
     if score >= 8:
         return "success"

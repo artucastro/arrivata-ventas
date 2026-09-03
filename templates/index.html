@@ -106,10 +106,10 @@
           </select>
         </div>
         <div class="col-6 col-md-2">
-          <select name="min_score" class="form-select form-select-sm">
-            <option value="">Cualquier score</option>
-            <option value="8" {% if filters.min_score == '8' %}selected{% endif %}>Alta prioridad (8+)</option>
-            <option value="5" {% if filters.min_score == '5' %}selected{% endif %}>Media o alta (5+)</option>
+          <select name="tier" class="form-select form-select-sm">
+            <option value="">Cualquier prioridad</option>
+            <option value="A"  {% if filters.tier == 'A'  %}selected{% endif %}>Tier A</option>
+            <option value="AB" {% if filters.tier == 'AB' %}selected{% endif %}>Tier A o B</option>
           </select>
         </div>
         <div class="col-3 col-md-1">
@@ -137,7 +137,7 @@
               <th class="ps-4">Nombre</th>
               <th>Tipo</th>
               <th>Barrio</th>
-              <th class="text-center">Score</th>
+              <th class="text-center">Prioridad</th>
               <th>Estado</th>
               <th>Productos</th>
               <th class="text-end pe-4">Acciones</th>
@@ -159,9 +159,17 @@
               </td>
               <td style="font-size:.82rem">{{ p.neighborhood }}</td>
               <td class="text-center">
-                <span class="score-badge badge-{{ p.score_color }}" title="{{ p.score_label }} prioridad">
-                  {{ p.score }}
-                </span>
+                {% if p.score_auto is not none %}
+                  <span class="score-badge badge-{{ p.tier_badge_class }}"
+                        title="score_auto {{ '%.1f'|format(p.score_auto) }} / 10 · Tier {{ p.tier }}">
+                    {{ p.tier }}
+                  </span>
+                {% else %}
+                  <span class="score-badge badge-neutral" title="score_auto sin calcular">—</span>
+                {% endif %}
+                <div class="text-muted" style="font-size:.66rem;margin-top:3px;letter-spacing:.02em">
+                  manual {{ p.score }}
+                </div>
               </td>
               <td>
                 <span class="status-badge status-{{ p.contact_status | lower | replace(' ', '-') }}">

@@ -76,6 +76,24 @@
                       </label>
                     </div>
                   </div>
+                  <div class="col-md-6">
+                    <label class="form-label">Proveedor actual</label>
+                    <select name="current_supplier" class="form-select">
+                      {% set cur_sup = prospect.current_supplier if prospect else 'desconocido' %}
+                      {% for val, lbl in current_suppliers %}
+                        <option value="{{ val }}" {% if cur_sup == val %}selected{% endif %}>{{ lbl }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label">Potencial de volumen</label>
+                    <select name="potential_volume" class="form-select">
+                      {% set cur_vol = prospect.potential_volume if prospect else 'desconocido' %}
+                      {% for val, lbl in potential_volumes %}
+                        <option value="{{ val }}" {% if cur_vol == val %}selected{% endif %}>{{ lbl }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
                   <div class="col-12">
                     <label class="form-label">Dirección</label>
                     <div class="input-group">
@@ -151,8 +169,16 @@
                          oninput="document.getElementById('scoreNumber').textContent = this.value; updateScoreColor(parseInt(this.value))">
                 </div>
                 <p class="text-muted mt-2" style="font-size:.75rem">
-                  Se calcula automáticamente según tipo, barrio y si es premium.
+                  Ajuste manual de prioridad. Es 100% tuyo: ningún import ni
+                  recálculo lo pisa.
                 </p>
+                {% if prospect and prospect.score_auto is not none %}
+                <p class="text-muted mt-1 mb-0" style="font-size:.72rem">
+                  <i class="bi bi-calculator me-1"></i>score_auto (vara comercial):
+                  <strong>{{ '%.1f'|format(prospect.score_auto) }}</strong> / 10 —
+                  se recalcula solo al guardar.
+                </p>
+                {% endif %}
               </div>
             </div>
 

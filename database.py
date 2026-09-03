@@ -11,10 +11,13 @@ El resto del código (app.py, tests, scripts) usa siempre las mismas funciones;
 la diferencia de backend queda encapsulada acá. Las queries se escriben con el
 placeholder `?` (estilo SQLite) y, para Postgres, se traducen a `%s` al vuelo.
 """
+import glob
 import os
 import re
 import threading
 from datetime import datetime
+
+import scoring as sc
 
 try:  # cargar .env aunque database se importe sin pasar por app.py (tests, scripts)
     from dotenv import load_dotenv
@@ -28,7 +31,7 @@ USE_POSTGRES = bool(DATABASE_URL)
 # Ruta del SQLite local (solo se usa si USE_POSTGRES es False).
 DB_PATH = os.environ.get("ARRIVATA_DB_PATH") or os.path.join(os.path.dirname(__file__), "arrivata.db")
 
-_MIGRATION_SQL = os.path.join(os.path.dirname(__file__), "migrations", "001_init_postgres.sql")
+_MIGRATIONS_DIR = os.path.join(os.path.dirname(__file__), "migrations")
 
 # Campos que se cargan / ajustan a mano en la app: una importación (Sheets o IA)
 # NUNCA los pisa cuando el prospecto ya existe, aunque el origen traiga otro valor.
@@ -40,14 +43,16 @@ IMPORT_PROTECTED_FIELDS = frozenset({
 })
 
 # Columnas que un UPDATE parcial puede tocar (cualquier otra clave del dict se ignora).
+# score_auto NO va acá: es derivado y lo recalcula update_prospect_partial solo.
 _UPDATABLE_COLUMNS = (
     'name', 'type', 'neighborhood', 'zone', 'address', 'phone', 'email',
-    'instagram', 'website', 'products_interest', 'score', 'score_auto',
+    'instagram', 'website', 'products_interest', 'score',
     'is_premium', 'contact_status', 'notes', 'lat', 'lng', 'geocode_status',
+    'current_supplier', 'potential_volume',
 )
 
 _FLOAT_COLUMNS = frozenset({'lat', 'lng'})
-_INT_COLUMNS = frozenset({'score', 'score_auto'})
+_INT_COLUMNS = frozenset({'score'})
 
 
 def _coerce(col, value):
@@ -190,10 +195,12 @@ if USE_POSTGRES:
         return _PgConn(raw)
 
     def init_db():
-        with open(_MIGRATION_SQL, "r", encoding="utf-8") as f:
-            ddl = f.read()
+        # Aplica todos los migrations/*.sql en orden. Todos son idempotentes
+        # (CREATE / ADD COLUMN ... IF NOT EXISTS), así que se pueden re-correr.
         conn = get_db()
-        conn.executescript(ddl)
+        for path in sorted(glob.glob(os.path.join(_MIGRATIONS_DIR, "*.sql"))):
+            with open(path, "r", encoding="utf-8") as f:
+                conn.executescript(f.read())
         conn.close()
 
 
@@ -231,15 +238,23 @@ else:
                 lat REAL,
                 lng REAL,
                 geocode_status TEXT DEFAULT '',
+                current_supplier TEXT NOT NULL DEFAULT 'desconocido',
+                potential_volume TEXT NOT NULL DEFAULT 'desconocido',
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
         ''')
-        # Migración para bases creadas antes de la columna geocode_status.
-        # Valores: '' (sin intentar) | 'ok' | 'pendiente' (falló, reintentar) | 'sin_resultado'
+        # Migraciones incrementales para bases creadas antes de una columna.
+        # geocode_status: '' (sin intentar) | 'ok' | 'pendiente' | 'sin_resultado'
         cols = [row[1] for row in conn.execute("PRAGMA table_info(prospects)")]
         if 'geocode_status' not in cols:
             conn.execute("ALTER TABLE prospects ADD COLUMN geocode_status TEXT DEFAULT ''")
+        if 'current_supplier' not in cols:
+            conn.execute("ALTER TABLE prospects ADD COLUMN current_supplier "
+                         "TEXT NOT NULL DEFAULT 'desconocido'")
+        if 'potential_volume' not in cols:
+            conn.execute("ALTER TABLE prospects ADD COLUMN potential_volume "
+                         "TEXT NOT NULL DEFAULT 'desconocido'")
         conn.commit()
         conn.close()
 
@@ -300,17 +315,19 @@ def create_prospect(data):
         INSERT INTO prospects (name, type, neighborhood, zone, address, phone, email,
                               instagram, website, products_interest, score, score_auto,
                               is_premium, contact_status, notes, lat, lng, geocode_status,
-                              created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                              current_supplier, potential_volume, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
         data['name'], data.get('type', ''), data.get('neighborhood', ''),
         data.get('zone', 'CABA'), data.get('address', ''), data.get('phone', ''),
         data.get('email', ''), data.get('instagram', ''), data.get('website', ''),
         data.get('products_interest', ''), _coerce('score', data.get('score', 5)),
-        _coerce('score_auto', data.get('score_auto', 5)),
+        sc.calculate_priority_score(data),
         _coerce('is_premium', data.get('is_premium')), data.get('contact_status', 'Pendiente'),
         data.get('notes', ''), _coerce('lat', data.get('lat')), _coerce('lng', data.get('lng')),
-        data.get('geocode_status', ''), now, now
+        data.get('geocode_status', ''),
+        data.get('current_supplier', 'desconocido'), data.get('potential_volume', 'desconocido'),
+        now, now
     ))
     conn.commit()
     new_id = cursor.lastrowid
@@ -324,16 +341,18 @@ def update_prospect(prospect_id, data):
     conn.execute('''
         UPDATE prospects SET name=?, type=?, neighborhood=?, zone=?, address=?, phone=?,
         email=?, instagram=?, website=?, products_interest=?, score=?, score_auto=?,
-        is_premium=?, contact_status=?, notes=?, lat=?, lng=?, updated_at=?
+        is_premium=?, contact_status=?, notes=?, lat=?, lng=?,
+        current_supplier=?, potential_volume=?, updated_at=?
         WHERE id=?
     ''', (
         data['name'], data.get('type', ''), data.get('neighborhood', ''),
         data.get('zone', 'CABA'), data.get('address', ''), data.get('phone', ''),
         data.get('email', ''), data.get('instagram', ''), data.get('website', ''),
         data.get('products_interest', ''), _coerce('score', data.get('score', 5)),
-        _coerce('score_auto', data.get('score_auto', 5)),
+        sc.calculate_priority_score(data),
         _coerce('is_premium', data.get('is_premium')), data.get('contact_status', 'Pendiente'),
         data.get('notes', ''), _coerce('lat', data.get('lat')), _coerce('lng', data.get('lng')),
+        data.get('current_supplier', 'desconocido'), data.get('potential_volume', 'desconocido'),
         now, prospect_id
     ))
     conn.commit()
@@ -343,12 +362,21 @@ def update_prospect(prospect_id, data):
 def update_prospect_partial(prospect_id, data: dict, skip=frozenset()):
     """UPDATE parcial: escribe SOLO las claves presentes en `data` que sean
     columnas válidas y no estén en `skip`. Las columnas ausentes quedan intactas
-    (no se resetean a NULL ni a su default)."""
+    (no se resetean a NULL ni a su default).
+
+    score_auto NO es una columna del dict: se recalcula siempre acá, sobre el
+    estado resultante del prospecto (lo que ya está en la DB + lo que trae `data`)."""
     cols = [c for c in _UPDATABLE_COLUMNS if c in data and c not in skip]
     if not cols:
         return
     values = [_coerce(c, data[c]) for c in cols]
-    set_clause = ', '.join(f'{c}=?' for c in cols) + ', updated_at=?'
+    set_parts = [f'{c}=?' for c in cols]
+
+    resulting = {**(get_prospect(prospect_id) or {}), **{c: data[c] for c in cols}}
+    set_parts.append('score_auto=?')
+    values.append(sc.calculate_priority_score(resulting))
+
+    set_clause = ', '.join(set_parts) + ', updated_at=?'
     values += [datetime.now().isoformat(), prospect_id]
     conn = get_db()
     conn.execute(f'UPDATE prospects SET {set_clause} WHERE id=?', values)
@@ -376,6 +404,23 @@ def update_prospect_location(prospect_id, lat, lng, geocode_status):
     )
     conn.commit()
     conn.close()
+
+
+def recalculate_score_auto(prospect_id):
+    """Recalcula score_auto para un prospecto ya existente y lo persiste.
+    Devuelve el nuevo valor (o None si el prospecto no existe). No toca `score`."""
+    p = get_prospect(prospect_id)
+    if not p:
+        return None
+    new_score = sc.calculate_priority_score(p)
+    conn = get_db()
+    conn.execute(
+        'UPDATE prospects SET score_auto=?, updated_at=? WHERE id=?',
+        (new_score, datetime.now().isoformat(), prospect_id)
+    )
+    conn.commit()
+    conn.close()
+    return new_score
 
 
 def delete_prospect(prospect_id):

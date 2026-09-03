@@ -45,6 +45,10 @@
                     <span class="text-muted">No</span>
                   {% endif %}
                 </dd>
+                <dt class="col-5 text-muted fw-normal">Proveedor</dt>
+                <dd class="col-7">{{ supplier_label }}</dd>
+                <dt class="col-5 text-muted fw-normal">Volumen</dt>
+                <dd class="col-7">{{ volume_label }}</dd>
               </dl>
             </div>
           </div>
@@ -110,6 +114,12 @@
             <div class="score-number">{{ prospect.score }}</div>
             <div class="score-label-text">{{ prospect.score_label }} prioridad</div>
           </div>
+          {% if prospect.score_auto is not none %}
+          <div class="text-muted mt-2" style="font-size:.74rem">
+            score_auto (vara comercial): <strong>{{ '%.1f'|format(prospect.score_auto) }}</strong> / 10
+            · Tier {{ prospect.tier }}
+          </div>
+          {% endif %}
           <div class="mt-3">
             <span class="status-badge status-{{ prospect.contact_status | lower | replace(' ', '-') }} fs-6">
               {{ prospect.contact_status }}

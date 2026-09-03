@@ -95,14 +95,24 @@ def _prospect_from_form(form) -> dict:
     is_premium = 'is_premium' in form
     tipo = form.get('type', '')
     barrio = form.get('neighborhood', '')
-    score_auto = sc.calculate_auto_score(tipo, barrio, is_premium)
+    # calculate_auto_score sigue siendo el default del slider de score MANUAL
+    # cuando el usuario no lo tocó (no es el score_auto que se guarda).
+    slider_default = sc.calculate_auto_score(tipo, barrio, is_premium)
     try:
-        score = int(form.get('score') or score_auto)
+        score = int(form.get('score') or slider_default)
     except (TypeError, ValueError):
-        score = score_auto
+        score = slider_default
     score = min(10, max(1, score))
     products = form.getlist('products_interest')
-    return {
+
+    supplier = form.get('current_supplier', 'desconocido')
+    if supplier not in sc.SUPPLIER_POINTS:
+        supplier = 'desconocido'
+    volume = form.get('potential_volume', 'desconocido')
+    if volume not in sc.VOLUME_POINTS:
+        volume = 'desconocido'
+
+    data = {
         'name': form.get('name', '').strip(),
         'type': tipo,
         'neighborhood': barrio,
@@ -114,13 +124,19 @@ def _prospect_from_form(form) -> dict:
         'website': form.get('website', ''),
         'products_interest': '|'.join(products),
         'score': score,
-        'score_auto': score_auto,
         'is_premium': is_premium,
         'contact_status': form.get('contact_status', 'Pendiente'),
         'notes': form.get('notes', ''),
         'lat': form.get('lat') or None,
         'lng': form.get('lng') or None,
+        'current_supplier': supplier,
+        'potential_volume': volume,
     }
+    # score_auto se calcula con la vara de prioridad (5 dimensiones). La capa db
+    # lo vuelve a calcular igual al guardar; lo dejamos acá para que `data` quede
+    # consistente (p. ej. si se vuelca a Sheets).
+    data['score_auto'] = sc.calculate_priority_score(data)
+    return data
 
 
 def _try_sync_sheets(prospect: dict):
@@ -217,7 +233,9 @@ def add_prospect():
                            prospect=None, action='add',
                            products=sc.PRODUCTS, types=sc.BUSINESS_TYPES,
                            neighborhoods=sc.NEIGHBORHOODS_CABA, zones=sc.ZONES,
-                           contact_statuses=sc.CONTACT_STATUSES)
+                           contact_statuses=sc.CONTACT_STATUSES,
+                           current_suppliers=sc.CURRENT_SUPPLIERS,
+                           potential_volumes=sc.POTENTIAL_VOLUMES)
 
 
 @app.route('/prospecto/<int:prospect_id>')
@@ -229,7 +247,13 @@ def view_prospect(prospect_id):
     prospect['score_color'] = sc.score_color(prospect['score'])
     prospect['score_label'] = sc.score_label(prospect['score'])
     prospect['products_list'] = [x for x in prospect.get('products_interest', '').split('|') if x]
-    return render_template('prospect_detail.html', prospect=prospect)
+    if prospect.get('score_auto') is not None:
+        prospect['tier'] = sc.priority_tier(prospect['score_auto'])
+    return render_template(
+        'prospect_detail.html', prospect=prospect,
+        supplier_label=dict(sc.CURRENT_SUPPLIERS).get(prospect.get('current_supplier'), '—'),
+        volume_label=dict(sc.POTENTIAL_VOLUMES).get(prospect.get('potential_volume'), '—'),
+    )
 
 
 @app.route('/prospecto/<int:prospect_id>/editar', methods=['GET', 'POST'])
@@ -256,7 +280,9 @@ def edit_prospect(prospect_id):
                            prospect=prospect, action='edit',
                            products=sc.PRODUCTS, types=sc.BUSINESS_TYPES,
                            neighborhoods=sc.NEIGHBORHOODS_CABA, zones=sc.ZONES,
-                           contact_statuses=sc.CONTACT_STATUSES)
+                           contact_statuses=sc.CONTACT_STATUSES,
+                           current_suppliers=sc.CURRENT_SUPPLIERS,
+                           potential_volumes=sc.POTENTIAL_VOLUMES)
 
 
 @app.route('/prospecto/<int:prospect_id>/eliminar', methods=['POST'])

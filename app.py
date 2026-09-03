@@ -157,9 +157,10 @@ def _try_sync_sheets(prospect: dict):
 
 # ─── Dashboard ──────────────────────────────────────────────────────────────
 
-@app.route('/')
-def index():
-    filters = {
+def _request_filters() -> dict:
+    """Mismos filtros de búsqueda para el dashboard y el mapa (barra de
+    filtros compartida, ver templates/_filter_bar.html)."""
+    return {
         'province': request.args.get('province', ''),
         'neighborhood': request.args.get('neighborhood', ''),
         'type': request.args.get('type', ''),
@@ -167,6 +168,34 @@ def index():
         'tier': request.args.get('tier', ''),   # '' | 'A' | 'AB' — sobre score_auto
         'search': request.args.get('search', ''),
     }
+
+
+def _map_points(prospects: list) -> list:
+    """De una lista de prospectos, los que tienen coordenadas válidas, en el
+    shape que consume el mapa (popup de Leaflet). Único filtro adicional que
+    tiene el mapa además de los de la barra de búsqueda: coordenadas presentes."""
+    result = []
+    for p in prospects:
+        if p.get('lat') and p.get('lng'):
+            result.append({
+                'id': p['id'],
+                'name': p['name'],
+                'type': p['type'],
+                'neighborhood': p['neighborhood'],
+                'address': p['address'],
+                'score': p['score'],
+                'score_color': sc.score_color(p['score']),
+                'score_label': sc.score_label(p['score']),
+                'contact_status': p['contact_status'],
+                'lat': p['lat'],
+                'lng': p['lng'],
+            })
+    return result
+
+
+@app.route('/')
+def index():
+    filters = _request_filters()
     prospects = db.get_all_prospects({k: v for k, v in filters.items() if v})
     stats = db.get_stats()
     neighborhoods = db.get_distinct_values('neighborhood')
@@ -203,33 +232,27 @@ def index():
 
 @app.route('/mapa')
 def map_view():
-    prospects = db.get_all_prospects()
+    filters = _request_filters()
+    prospects = db.get_all_prospects({k: v for k, v in filters.items() if v})
     for p in prospects:
         p['score_color'] = sc.score_color(p['score'])
         p['score_label'] = sc.score_label(p['score'])
-    return render_template('map.html', prospects=prospects)
+    neighborhoods = db.get_distinct_values('neighborhood')
+
+    return render_template('map.html',
+                           prospects=prospects, map_points=_map_points(prospects),
+                           filters=filters, neighborhoods=neighborhoods,
+                           contact_statuses=sc.CONTACT_STATUSES)
 
 
 @app.route('/api/prospects')
 def api_prospects():
-    prospects = db.get_all_prospects()
-    result = []
-    for p in prospects:
-        if p.get('lat') and p.get('lng'):
-            result.append({
-                'id': p['id'],
-                'name': p['name'],
-                'type': p['type'],
-                'neighborhood': p['neighborhood'],
-                'address': p['address'],
-                'score': p['score'],
-                'score_color': sc.score_color(p['score']),
-                'score_label': sc.score_label(p['score']),
-                'contact_status': p['contact_status'],
-                'lat': p['lat'],
-                'lng': p['lng'],
-            })
-    return jsonify(result)
+    # Mismos filtros que /mapa y / (el mapa hace fetch acá con el query string
+    # de la página actual — ver static/js/map.js — así que esta ruta tiene que
+    # respetarlos para que el subconjunto filtrado sea el que se ve en pantalla).
+    filters = _request_filters()
+    prospects = db.get_all_prospects({k: v for k, v in filters.items() if v})
+    return jsonify(_map_points(prospects))
 
 
 # ─── Add / Edit Prospect ────────────────────────────────────────────────────

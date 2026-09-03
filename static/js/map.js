@@ -41,10 +41,17 @@ document.addEventListener('DOMContentLoaded', () => {
   // los separa (spiderfy) o hace zoom hasta que se puedan ver sueltos.
   const markers = L.markerClusterGroup({ showCoverageOnHover: false });
 
-  fetch('/api/prospects')
+  // Se reenvía el query string tal cual (search/neighborhood/type/contact_status/
+  // tier/province) — son los mismos filtros que ya aplicó el server al renderizar
+  // esta página (ver map_view() en app.py), así que /api/prospects devuelve
+  // exactamente el mismo subconjunto que muestra la barra de filtros de arriba.
+  fetch('/api/prospects' + window.location.search)
     .then(r => r.json())
     .then(prospects => {
-      document.getElementById('map-count').textContent = `${prospects.length} pin${prospects.length !== 1 ? 's' : ''}`;
+      document.getElementById('map-count').textContent =
+        prospects.length === 0
+          ? 'Sin resultados para estos filtros'
+          : `${prospects.length} pin${prospects.length !== 1 ? 's' : ''}`;
 
       prospects.forEach(p => {
         const marker = L.marker([p.lat, p.lng], { icon: makeIcon(p.score) });

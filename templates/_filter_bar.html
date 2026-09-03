@@ -1,0 +1,59 @@
+{#
+  Barra de búsqueda/filtros compartida entre el dashboard (index.html) y el
+  mapa (map.html) — misma lógica de filtrado en los dos (database.get_all_prospects
+  vía app._request_filters()/_map_points()), un solo lugar para el HTML.
+
+  Espera en contexto: filters, neighborhoods, contact_statuses, clear_url.
+  El <form method="GET"> sin `action` explícito hace GET sobre la URL actual
+  (/ en el dashboard, /mapa en el mapa), así que no hace falta parametrizarlo.
+#}
+<div class="card border-0 filter-card mb-3">
+  <div class="card-body">
+    <form method="GET" class="row g-2 align-items-end">
+      <div class="col-12 col-md-3">
+        <input type="text" name="search" class="form-control form-control-sm"
+               placeholder="Buscar nombre, dirección..." value="{{ filters.search }}">
+      </div>
+      <div class="col-6 col-md-2">
+        <select name="province" class="form-select form-select-sm">
+          <option value="">Todas las provincias</option>
+          <option value="CABA" {% if filters.province == 'CABA' %}selected{% endif %}>CABA</option>
+          <option value="GBA" {% if filters.province == 'GBA' %}selected{% endif %}>Buenos Aires (GBA)</option>
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <select name="neighborhood" class="form-select form-select-sm">
+          <option value="">Todos los barrios</option>
+          {% for n in neighborhoods %}
+            <option value="{{ n }}" {% if filters.neighborhood == n %}selected{% endif %}>{{ n }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <select name="contact_status" class="form-select form-select-sm">
+          <option value="">Todos los estados</option>
+          {% for s in contact_statuses %}
+            <option value="{{ s }}" {% if filters.contact_status == s %}selected{% endif %}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <select name="tier" class="form-select form-select-sm">
+          <option value="">Cualquier prioridad</option>
+          <option value="A"  {% if filters.tier == 'A'  %}selected{% endif %}>Tier A</option>
+          <option value="AB" {% if filters.tier == 'AB' %}selected{% endif %}>Tier A o B</option>
+        </select>
+      </div>
+      <div class="col-3 col-md-1">
+        <button type="submit" class="btn btn-arrivata btn-sm w-100">
+          <i class="bi bi-funnel-fill"></i>
+        </button>
+      </div>
+      <div class="col-3 col-md-1">
+        <a href="{{ clear_url }}" class="btn btn-outline-secondary btn-sm w-100">
+          <i class="bi bi-x-lg"></i>
+        </a>
+      </div>
+    </form>
+  </div>
+</div>

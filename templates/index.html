@@ -78,6 +78,27 @@
   {% set clear_url = url_for('index') %}
   {% include '_filter_bar.html' %}
 
+  <!-- Orden -->
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <div class="btn-group btn-group-sm" role="group">
+      <a href="{{ order_urls.priority }}"
+         class="btn btn-outline-secondary {% if order_mode != 'mine' %}active{% endif %}">
+        <i class="bi bi-bar-chart-fill me-1"></i>Por prioridad
+      </a>
+      <a href="{{ order_urls.mine }}"
+         class="btn btn-outline-secondary {% if order_mode == 'mine' %}active{% endif %}">
+        <i class="bi bi-list-ol me-1"></i>Mi orden
+      </a>
+    </div>
+    {% if order_mode == 'mine' %}
+      {% if current_user.is_admin %}
+        <span class="text-muted" id="orderSaveStatus" style="font-size:.76rem"></span>
+      {% else %}
+        <span class="text-muted" style="font-size:.76rem">Solo lectura — no se puede reordenar</span>
+      {% endif %}
+    {% endif %}
+  </div>
+
   <!-- Prospects Table -->
   <div class="card border-0">
     <div class="card-body p-0">
@@ -86,7 +107,12 @@
         <table class="table table-hover align-middle mb-0 prospects-table">
           <thead>
             <tr>
+              {% if order_mode == 'mine' and current_user.is_admin %}
+              <th class="ps-4" style="width:28px"></th>
+              <th>Nombre</th>
+              {% else %}
               <th class="ps-4">Nombre</th>
+              {% endif %}
               <th>Tipo</th>
               <th>Barrio</th>
               <th class="text-center">Prioridad</th>
@@ -96,9 +122,23 @@
               <th class="text-end pe-4">Acciones</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody id="prospectsBody">
             {% for p in prospects %}
-            <tr>
+            <tr data-id="{{ p.id }}">
+              {% if order_mode == 'mine' and current_user.is_admin %}
+              <td class="ps-4 text-center drag-handle" style="width:28px;cursor:grab;color:var(--a-light-gray)"
+                  title="Arrastrar para reordenar">
+                <i class="bi bi-grip-vertical"></i>
+              </td>
+              <td style="min-width:180px">
+                <a href="{{ url_for('view_prospect', prospect_id=p.id) }}" class="prospect-name">
+                  {{ p.name }}
+                </a>
+                {% if p.address %}
+                  <div class="text-muted" style="font-size:.75rem">{{ p.address }}</div>
+                {% endif %}
+              </td>
+              {% else %}
               <td class="ps-4" style="min-width:180px">
                 <a href="{{ url_for('view_prospect', prospect_id=p.id) }}" class="prospect-name">
                   {{ p.name }}
@@ -107,6 +147,7 @@
                   <div class="text-muted" style="font-size:.75rem">{{ p.address }}</div>
                 {% endif %}
               </td>
+              {% endif %}
               <td>
                 <span style="font-size:.78rem;color:var(--a-gray)">{{ p.type }}</span>
               </td>
@@ -215,4 +256,35 @@ function confirmDelete(id, name) {
   new bootstrap.Modal(document.getElementById('deleteModal')).show();
 }
 </script>
+{% if order_mode == 'mine' and current_user.is_admin %}
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<script>
+(function () {
+  const body = document.getElementById('prospectsBody');
+  if (!body) return;
+  const status = document.getElementById('orderSaveStatus');
+
+  new Sortable(body, {
+    handle: '.drag-handle',
+    animation: 150,
+    onEnd: function () {
+      const ids = [...body.querySelectorAll('tr')].map(tr => tr.dataset.id);
+      if (status) status.textContent = 'Guardando…';
+      fetch('/api/visit-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prospect_ids: ids }),
+      })
+        .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        .then(() => {
+          if (!status) return;
+          status.textContent = 'Orden guardado ✓';
+          setTimeout(() => { status.textContent = ''; }, 2000);
+        })
+        .catch(() => { if (status) status.textContent = 'No se pudo guardar el orden.'; });
+    },
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}

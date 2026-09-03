@@ -266,6 +266,23 @@ def index():
     stats = db.get_stats()
     neighborhoods = db.get_distinct_values('neighborhood')
 
+    # Orden: 'priority' (score_auto, el de get_all_prospects) o 'mine' (personal
+    # del usuario logueado). Viewer puede VER "Mi orden" pero no tiene cuenta
+    # individual real (id sintético) — para viewer queda igual al de prioridad.
+    order_mode = request.args.get('order', 'priority')
+    if order_mode not in ('priority', 'mine'):
+        order_mode = 'priority'
+    if order_mode == 'mine' and current_user.is_admin:
+        personal_order = db.get_ordered_prospect_ids(int(current_user.id))
+        rank = {pid: i for i, pid in enumerate(personal_order)}
+        prospects.sort(key=lambda p: rank.get(p['id'], len(personal_order)))
+
+    base_args = {k: v for k, v in filters.items() if v}
+    order_urls = {
+        'priority': url_for('index', order='priority', **base_args),
+        'mine': url_for('index', order='mine', **base_args),
+    }
+
     for p in prospects:
         # Prioridad (Tier + orden) = SIEMPRE score_auto, pase lo que pase con
         # display_score. score_color/score_label (sobre el score manual)
@@ -291,7 +308,8 @@ def index():
     return render_template('index.html',
                            prospects=prospects, stats=stats,
                            filters=filters, neighborhoods=neighborhoods,
-                           contact_statuses=sc.CONTACT_STATUSES)
+                           contact_statuses=sc.CONTACT_STATUSES,
+                           order_mode=order_mode, order_urls=order_urls)
 
 
 # ─── Map ────────────────────────────────────────────────────────────────────
@@ -319,6 +337,26 @@ def api_prospects():
     filters = _request_filters()
     prospects = db.get_all_prospects({k: v for k, v in filters.items() if v})
     return jsonify(_map_points(prospects))
+
+
+# ─── Orden personal de visitas ("Mi orden") ─────────────────────────────────
+
+@app.route('/api/visit-order', methods=['POST'])
+@auth.admin_required
+def api_visit_order():
+    """Guarda el nuevo orden que arrastró el usuario logueado. Solo admin
+    (viewer no tiene cuenta individual real y @admin_required ya le da 403)."""
+    payload = request.get_json(silent=True) or {}
+    raw_ids = payload.get('prospect_ids')
+    if not isinstance(raw_ids, list):
+        return jsonify({'error': 'prospect_ids tiene que ser una lista de ids'}), 400
+    try:
+        prospect_ids = [int(pid) for pid in raw_ids]
+    except (TypeError, ValueError):
+        return jsonify({'error': 'prospect_ids tiene que ser una lista de ids numéricos'}), 400
+
+    db.save_visit_order(int(current_user.id), prospect_ids)
+    return jsonify({'ok': True})
 
 
 # ─── Add / Edit Prospect ────────────────────────────────────────────────────

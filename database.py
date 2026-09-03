@@ -220,6 +220,7 @@ else:
     def get_db():
         conn = sqlite3.connect(DB_PATH)
         conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA foreign_keys = ON")  # para el ON DELETE CASCADE de visit_order
         return conn
 
     def init_db():
@@ -275,6 +276,16 @@ else:
                 password_hash TEXT NOT NULL,
                 role TEXT NOT NULL DEFAULT 'admin' CHECK(role IN ('admin', 'viewer')),
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS visit_order (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                prospect_id INTEGER NOT NULL REFERENCES prospects(id) ON DELETE CASCADE,
+                position INTEGER NOT NULL,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, prospect_id)
             )
         ''')
         conn.commit()
@@ -575,3 +586,60 @@ def update_user_password(username: str, password_hash: str) -> bool:
     conn.commit()
     conn.close()
     return True
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Orden personal de visitas ("Mi orden" en el dashboard). Cada usuario admin
+# tiene el suyo, independiente del de los demás — ver app.py index()/api_visit_order.
+# ─────────────────────────────────────────────────────────────────────────────
+def get_ordered_prospect_ids(user_id: int) -> list:
+    """Orden personal COMPLETO de `user_id`: primero los que ya posicionó
+    (position ascendente), después el resto — prospectos nuevos o que
+    todavía no tocó — por score_auto DESC (mismo orden que get_all_prospects,
+    o sea nunca "se pierden" de la lista). Devuelve solo ids, en orden."""
+    conn = get_db()
+    rows = conn.execute(
+        'SELECT prospect_id FROM visit_order WHERE user_id = ? ORDER BY position ASC',
+        (user_id,)
+    ).fetchall()
+    conn.close()
+    positioned_ids = [row['prospect_id'] for row in rows]
+    positioned_set = set(positioned_ids)
+    rest = [p['id'] for p in get_all_prospects() if p['id'] not in positioned_set]
+    return positioned_ids + rest
+
+
+def save_visit_order(user_id: int, visible_ids: list) -> None:
+    """Guarda el nuevo orden que arrastró el usuario para `visible_ids` (los
+    prospectos que tenía a la vista en ese momento — puede ser un subconjunto
+    filtrado, no hace falta que sea la lista completa).
+
+    No pisa la posición de los prospectos que el usuario NO tenía a la vista:
+    se reinsertan como bloque, en el mismo lugar relativo donde estaba el
+    primero de los `visible_ids` en su orden anterior. Así filtrar + reordenar
+    nunca hace que otro prospecto (fuera del filtro) pierda su posición."""
+    valid_ids = {p['id'] for p in get_all_prospects()}
+    visible_ids = [int(pid) for pid in visible_ids if int(pid) in valid_ids]
+    if not visible_ids:
+        return
+    visible_set = set(visible_ids)
+
+    full_order = get_ordered_prospect_ids(user_id)
+    rest = [pid for pid in full_order if pid not in visible_set]
+    insert_at = 0
+    for pid in full_order:
+        if pid in visible_set:
+            break
+        insert_at += 1
+    merged = rest[:insert_at] + visible_ids + rest[insert_at:]
+
+    conn = get_db()
+    now = datetime.now().isoformat()
+    conn.execute('DELETE FROM visit_order WHERE user_id = ?', (user_id,))
+    for position, prospect_id in enumerate(merged):
+        conn.execute(
+            'INSERT INTO visit_order (user_id, prospect_id, position, updated_at) VALUES (?, ?, ?, ?)',
+            (user_id, prospect_id, position, now)
+        )
+    conn.commit()
+    conn.close()

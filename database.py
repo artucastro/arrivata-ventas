@@ -266,6 +266,17 @@ else:
         if 'display_score' not in cols:
             conn.execute("ALTER TABLE prospects ADD COLUMN display_score "
                          "TEXT NOT NULL DEFAULT 'auto'")
+
+        # Tabla nueva (no hace falta ALTER incremental, se crea directo con todo).
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'admin' CHECK(role IN ('admin', 'viewer')),
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
         conn.commit()
         conn.close()
 
@@ -503,3 +514,64 @@ def upsert_prospect(data: dict, protect_on_update=None) -> tuple[int, bool]:
     else:
         new_id = create_prospect(data)
         return new_id, True
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Usuarios (login admin — ver auth.py). La contraseña compartida de solo
+# lectura NO pasa por acá: vive en la env var VIEWER_PASSWORD, no es una fila.
+# ─────────────────────────────────────────────────────────────────────────────
+def create_user(username: str, password_hash: str, role: str = 'admin') -> int:
+    username = username.strip().lower()
+    conn = get_db()
+    now = datetime.now().isoformat()
+    cursor = conn.execute(
+        'INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, ?, ?)',
+        (username, password_hash, role, now)
+    )
+    conn.commit()
+    new_id = cursor.lastrowid
+    conn.close()
+    return new_id
+
+
+def get_user_by_username(username: str):
+    username = (username or '').strip().lower()
+    if not username:
+        return None
+    conn = get_db()
+    row = conn.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def get_user_by_id(user_id):
+    """`user_id` llega como string desde la sesión de Flask-Login."""
+    try:
+        user_id = int(user_id)
+    except (TypeError, ValueError):
+        return None
+    conn = get_db()
+    row = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def list_users() -> list:
+    conn = get_db()
+    rows = conn.execute(
+        'SELECT id, username, role, created_at FROM users ORDER BY id'
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def update_user_password(username: str, password_hash: str) -> bool:
+    """False si el usuario no existe; True si actualizó."""
+    if not get_user_by_username(username):
+        return False
+    username = username.strip().lower()
+    conn = get_db()
+    conn.execute('UPDATE users SET password_hash = ? WHERE username = ?', (password_hash, username))
+    conn.commit()
+    conn.close()
+    return True

@@ -1,14 +1,16 @@
 import csv
-import hmac
 import io
 import os
 import secrets
 import time
 
 from dotenv import load_dotenv, dotenv_values
-from flask import (Flask, flash, jsonify, redirect, render_template, request,
-                   Response, session, url_for)
+from flask import (Flask, flash, jsonify, redirect, render_template,
+                   request, Response, session, url_for)
+from flask_login import (current_user, login_user, logout_user,
+                         login_required as flask_login_required)
 
+import auth
 import database as db
 import scoring as sc
 from config_manager import load_config, save_config
@@ -23,25 +25,83 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY", "arrivata-secret-2024")
 
 db.init_db()
 
+auth.login_manager.init_app(app)
 
-# ─── Login (HTTP Basic) ─────────────────────────────────────────────────────
-# Si APP_PASSWORD está seteada (deploy), se pide usuario+contraseña en todas las
-# rutas. Si no está (uso local), no hay login.
 
-APP_USER = os.getenv("APP_USER", "arrivata")
-APP_PASSWORD = os.getenv("APP_PASSWORD", "")
+# ─── Login (Flask-Login, sesión) ────────────────────────────────────────────
+# Reemplaza el viejo HTTP Basic compartido (APP_USER/APP_PASSWORD). Dos formas
+# de entrar: cuenta individual (tabla `users`, admin) o la contraseña única
+# de solo lectura (env VIEWER_PASSWORD, sin usuario) — ver auth.py.
+#
+# TODA la app requiere sesión iniciada; las únicas rutas públicas son login,
+# logout y los estáticos.
+
+_PUBLIC_ENDPOINTS = {'login', 'logout', 'static'}
 
 
 @app.before_request
 def _require_login():
-    if not APP_PASSWORD:
+    if request.endpoint is None or request.endpoint in _PUBLIC_ENDPOINTS:
         return
-    auth = request.authorization
-    if (auth and hmac.compare_digest(auth.username or "", APP_USER)
-            and hmac.compare_digest(auth.password or "", APP_PASSWORD)):
-        return
-    return Response('Acceso restringido.', 401,
-                    {'WWW-Authenticate': 'Basic realm="Arrivata Sales"'})
+    if not current_user.is_authenticated:
+        return auth.login_manager.unauthorized()
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if current_user.is_authenticated:
+        return redirect(url_for('index'))
+
+    login_tab = 'admin'
+    if request.method == 'POST':
+        mode = request.form.get('mode')
+        login_tab = 'viewer' if mode == 'viewer' else 'admin'
+
+        if mode == 'admin':
+            username = request.form.get('username', '').strip()
+            password = request.form.get('password', '')
+            user = auth.authenticate(username, password)
+            if user:
+                login_user(user)
+                flash(f'Bienvenido, {user.username}.', 'success')
+                return redirect(_safe_next_url())
+            flash('Usuario o contraseña incorrectos.', 'danger')
+
+        elif mode == 'viewer':
+            password = request.form.get('viewer_password', '')
+            user = auth.authenticate_viewer(password)
+            if user:
+                login_user(user)
+                flash('Acceso de solo lectura iniciado.', 'success')
+                return redirect(_safe_next_url())
+            flash('Contraseña incorrecta.', 'danger')
+
+        else:
+            flash('Solicitud inválida.', 'danger')
+
+    return render_template('login.html', login_tab=login_tab)
+
+
+def _safe_next_url() -> str:
+    """El ?next= de la URL, solo si es una ruta relativa propia (evita
+    open-redirect si alguien arma un link a /login?next=https://otro-sitio)."""
+    next_url = request.args.get('next', '')
+    if next_url and next_url.startswith('/') and not next_url.startswith('//'):
+        return next_url
+    return url_for('index')
+
+
+@app.route('/logout')
+@flask_login_required
+def logout():
+    logout_user()
+    flash('Sesión cerrada.', 'info')
+    return redirect(url_for('login'))
+
+
+@app.errorhandler(403)
+def _forbidden(e):
+    return render_template('403.html'), 403
 
 
 # ─── Server-side search-results store ───────────────────────────────────────
@@ -264,6 +324,7 @@ def api_prospects():
 # ─── Add / Edit Prospect ────────────────────────────────────────────────────
 
 @app.route('/prospecto/nuevo', methods=['GET', 'POST'])
+@auth.admin_required
 def add_prospect():
     if request.method == 'POST':
         data = _prospect_from_form(request.form)
@@ -308,6 +369,7 @@ def view_prospect(prospect_id):
 
 
 @app.route('/prospecto/<int:prospect_id>/editar', methods=['GET', 'POST'])
+@auth.admin_required
 def edit_prospect(prospect_id):
     prospect = db.get_prospect(prospect_id)
     if not prospect:
@@ -338,6 +400,7 @@ def edit_prospect(prospect_id):
 
 
 @app.route('/prospecto/<int:prospect_id>/eliminar', methods=['POST'])
+@auth.admin_required
 def delete_prospect(prospect_id):
     db.delete_prospect(prospect_id)
     flash('Prospecto eliminado.', 'info')
@@ -358,6 +421,7 @@ def api_score():
 # ─── AI Search ──────────────────────────────────────────────────────────────
 
 @app.route('/busqueda')
+@auth.admin_required
 def search_view():
     api_key_set = bool(get_anthropic_api_key())
     pending = _get_search_results() or None
@@ -374,6 +438,7 @@ def search_view():
 
 
 @app.route('/busqueda/ejecutar', methods=['POST'])
+@auth.admin_required
 def run_search():
     ui_key = request.form.get('api_key_ui', '').strip()
     if ui_key and not ui_key.startswith('sk-'):
@@ -432,6 +497,7 @@ def run_search():
 
 
 @app.route('/busqueda/importar', methods=['POST'])
+@auth.admin_required
 def import_search_results():
     results = _get_search_results()
     selected_indexes = request.form.getlist('selected')
@@ -499,6 +565,7 @@ def import_search_results():
 # ─── Google Sheets ──────────────────────────────────────────────────────────
 
 @app.route('/sheets', methods=['GET', 'POST'])
+@auth.admin_required
 def sheets_view():
     config = load_config()
 

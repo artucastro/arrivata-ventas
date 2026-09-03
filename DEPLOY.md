@@ -33,18 +33,19 @@ Todavía en la consola Bash, dentro de `~/arrivata-ventas`:
 
 ```bash
 python -c "import secrets; print('FLASK_SECRET_KEY=' + secrets.token_hex(32))" > .env
-echo "APP_USER=arrivata"            >> .env
-echo "APP_PASSWORD=ELEGI_UNA_CLAVE" >> .env
-echo "FLASK_DEBUG=0"                >> .env
+echo "VIEWER_PASSWORD=ELEGI_UNA_CLAVE"  >> .env
+echo "FLASK_DEBUG=0"                    >> .env
 echo "DATABASE_URL=postgresql://USER:PASSWORD@HOST/DBNAME?sslmode=require" >> .env
 nano .env   # cambiá ELEGI_UNA_CLAVE y pegá la DATABASE_URL real; Ctrl+O, Enter, Ctrl+X
 ```
 
-`APP_USER` + `APP_PASSWORD` son el usuario y contraseña con los que vas a entrar a la app.
-
 `DATABASE_URL` es la conexión al PostgreSQL (p. ej. Neon). **Es obligatoria en la
 web**: con varios vendedores entrando a la vez, SQLite no sirve. Si se dejara sin
 definir, la app caería a SQLite local (solo para desarrollo).
+
+`VIEWER_PASSWORD` es la contraseña única de solo lectura (sin usuario) para el
+resto de la empresa. Las cuentas completas de Arturo y Emmanuel NO van en el
+`.env` — se crean con `scripts/manage_users.py` (ver sección siguiente).
 
 ## 4. Cargar la base de datos
 
@@ -56,8 +57,17 @@ python scripts/migrate_sqlite_to_postgres.py
 ```
 
 El esquema de la tabla lo crea la propia app al arrancar (`db.init_db()` aplica
-`migrations/001_init_postgres.sql`, que es idempotente). En adelante la base vive
-en Postgres: no hay archivo `.db` que subir ni respaldar en el server.
+`migrations/*.sql`, todas idempotentes). En adelante la base vive en Postgres:
+no hay archivo `.db` que subir ni respaldar en el server.
+
+Creá tu cuenta y la de Emmanuel (desde tu PC, con la `DATABASE_URL` de producción
+en tu `.env` local, o en la consola Bash de PythonAnywhere con el `.env` del server):
+
+```bash
+python scripts/manage_users.py create arturo
+python scripts/manage_users.py create emmanuel
+```
+Pide la contraseña de forma oculta (no queda en el historial de la terminal).
 
 ## 5. Crear la Web App
 
@@ -73,8 +83,9 @@ en Postgres: no hay archivo `.db` que subir ni respaldar en el server.
 
 ## 6. Probar
 
-Abrí `https://TU_USUARIO.pythonanywhere.com` → el navegador pide usuario y contraseña
-(los de `APP_USER` / `APP_PASSWORD`) → entrás al dashboard con tus 86 prospectos.
+Abrí `https://TU_USUARIO.pythonanywhere.com` → te lleva a `/login` → entrá con tu
+cuenta (usuario + contraseña, la que creaste en el paso 4) y vas a ver el dashboard.
+Al resto de la empresa le pasás la pestaña "Solo lectura" del login + `VIEWER_PASSWORD`.
 
 ---
 

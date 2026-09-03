@@ -71,15 +71,34 @@ duplica: `INSERT ... ON CONFLICT (id) DO NOTHING`).
   y el spreadsheet compartido como Editor. Completar `sheets_spreadsheet_key` y
   `sheets_gid` en `config.json`.
 
+## Login / usuarios
+
+Toda la app requiere sesión iniciada (`/login`). Dos formas de entrar:
+
+- **Cuenta individual** (Arturo, Emmanuel): usuario + contraseña propios, acceso
+  completo (crear/editar/eliminar). Se crean con `scripts/manage_users.py`:
+  ```bash
+  python scripts/manage_users.py create arturo     # pide la contraseña oculta
+  python scripts/manage_users.py passwd arturo      # cambiarla
+  python scripts/manage_users.py list               # ver las cuentas que existen
+  ```
+- **Solo lectura**: una contraseña única compartida (`VIEWER_PASSWORD` en `.env`,
+  ver `.env.example`), sin usuario — la reparte Arturo a quien corresponda
+  (gerencia, etc.). Ve dashboard, mapa, fichas y reportes; no puede crear, editar
+  ni eliminar (ni en la UI —botones ocultos— ni en el backend, 403 si se intenta
+  igual).
+
 ## Tests
 
 ```bash
 python tests/test_import_protection.py
+python tests/test_priority_score.py
+python tests/test_auth.py
 ```
 
-Corre contra el backend que indique `DATABASE_URL`. Con Postgres, el test crea un
-**esquema temporal propio** (`test_import_<pid>_<ts>`), corre ahí y lo borra al
-final — nunca toca la tabla `prospects` real. Con SQLite usa un archivo temporal.
+Corren contra el backend que indique `DATABASE_URL`. Con Postgres, cada uno crea
+un **esquema temporal propio**, corre ahí y lo borra al final — nunca tocan la
+tabla `prospects` (ni `users`) reales. Con SQLite usan un archivo temporal.
 
 ## Archivos que NO están en el repo
 

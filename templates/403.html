@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Sin permisos — Arrivata Sales{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-5 text-center">
+  <i class="bi bi-lock fs-1" style="color:var(--a-light-gray)"></i>
+  <h1 class="page-title mt-3">No tenés permisos para hacer eso</h1>
+  <p class="text-muted mb-4" style="font-size:.9rem">
+    Tu acceso es de solo lectura. Si necesitás crear, editar o eliminar
+    prospectos, pedile una cuenta a Arturo o Emmanuel.
+  </p>
+  <a href="{{ url_for('index') }}" class="btn btn-arrivata">
+    <i class="bi bi-arrow-left me-1"></i>Volver al dashboard
+  </a>
+</div>
+{% endblock %}

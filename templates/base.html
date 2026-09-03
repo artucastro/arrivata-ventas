@@ -45,6 +45,7 @@
             <i class="bi bi-geo-alt me-1"></i>Mapa
           </a>
         </li>
+        {% if current_user.is_admin %}
         <li class="nav-item">
           <a class="nav-link {% if request.endpoint == 'search_view' %}active{% endif %}" href="{{ url_for('search_view') }}">
             <i class="bi bi-stars me-1"></i>Búsqueda IA
@@ -55,14 +56,25 @@
             <i class="bi bi-table me-1"></i>Google Sheets
           </a>
         </li>
+        {% endif %}
       </ul>
 
       <div class="d-flex gap-2 align-items-center">
         <a href="{{ url_for('export_csv') }}" class="btn btn-outline-secondary btn-sm">
           <i class="bi bi-download me-1"></i>CSV
         </a>
+        {% if current_user.is_admin %}
         <a href="{{ url_for('add_prospect') }}" class="btn btn-arrivata btn-sm">
           <i class="bi bi-plus-lg me-1"></i>Nuevo prospecto
+        </a>
+        {% endif %}
+        <span class="nav-divider mx-1"></span>
+        <span class="text-muted d-none d-lg-inline" style="font-size:.8rem">
+          <i class="bi bi-person-circle me-1"></i>{{ current_user.username }}
+          {% if not current_user.is_admin %}<span class="badge bg-secondary ms-1" style="font-size:.65rem">solo lectura</span>{% endif %}
+        </span>
+        <a href="{{ url_for('logout') }}" class="btn btn-outline-secondary btn-sm" title="Cerrar sesión">
+          <i class="bi bi-box-arrow-right"></i>
         </a>
       </div>
     </div>

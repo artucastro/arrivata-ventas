@@ -196,6 +196,21 @@
                     Este valor es tuyo: ningún import ni recálculo lo pisa.
                   </p>
                 </div>
+
+                <div class="mt-4 pt-3 px-2 text-start" style="border-top:1px solid var(--a-border)">
+                  <label class="form-label mb-1" style="font-size:.8rem">¿Qué score mostrar en el dashboard?</label>
+                  <select name="display_score" class="form-select form-select-sm">
+                    {% set cur_disp = prospect.display_score if prospect else 'auto' %}
+                    {% for val, lbl in display_score_options %}
+                      <option value="{{ val }}" {% if cur_disp == val %}selected{% endif %}>{{ lbl }}</option>
+                    {% endfor %}
+                  </select>
+                  <p class="text-muted mt-1 mb-0" style="font-size:.72rem;line-height:1.45">
+                    Solo cambia qué número se ve en la columna "Score" de la
+                    lista principal. No cambia ningún cálculo, ni el Tier, ni
+                    el orden (siempre por score_auto).
+                  </p>
+                </div>
               </div>
             </div>
 

@@ -111,6 +111,9 @@ def _prospect_from_form(form) -> dict:
     volume = form.get('potential_volume', 'desconocido')
     if volume not in sc.VOLUME_POINTS:
         volume = 'desconocido'
+    display_score = form.get('display_score', 'auto')
+    if display_score not in ('auto', 'manual'):
+        display_score = 'auto'
 
     data = {
         'name': form.get('name', '').strip(),
@@ -131,6 +134,7 @@ def _prospect_from_form(form) -> dict:
         'lng': form.get('lng') or None,
         'current_supplier': supplier,
         'potential_volume': volume,
+        'display_score': display_score,
     }
     # score_auto se calcula con la vara de prioridad (5 dimensiones). La capa db
     # lo vuelve a calcular igual al guardar; lo dejamos acá para que `data` quede
@@ -168,14 +172,26 @@ def index():
     neighborhoods = db.get_distinct_values('neighborhood')
 
     for p in prospects:
-        # Prioridad = score_auto (la vara). score_color/score_label (sobre el
-        # score manual) quedan solo para el detalle chico "ajuste manual".
+        # Prioridad (Tier + orden) = SIEMPRE score_auto, pase lo que pase con
+        # display_score. score_color/score_label (sobre el score manual)
+        # quedan solo para el detalle chico "ajuste manual".
         if p.get('score_auto') is not None:
             p['tier'] = sc.priority_tier(p['score_auto'])
             p['tier_badge_class'] = sc.tier_badge_class(p['score_auto'])
         p['score_color'] = sc.score_color(p['score'])
         p['score_label'] = sc.score_label(p['score'])
         p['products_list'] = [x for x in p.get('products_interest', '').split('|') if x]
+
+        # Columna "Score" del dashboard: display_score='manual' -> el ajuste a
+        # mano; si no (default 'auto', o si por algún motivo no hay score_auto
+        # todavía) -> score_auto. Esto es solo qué número se MUESTRA; no toca
+        # el Tier ni el orden de arriba.
+        if p.get('display_score') == 'manual' or p.get('score_auto') is None:
+            p['dashboard_score'] = p['score']
+            p['dashboard_score_is_manual'] = True
+        else:
+            p['dashboard_score'] = p['score_auto']
+            p['dashboard_score_is_manual'] = False
 
     return render_template('index.html',
                            prospects=prospects, stats=stats,
@@ -240,7 +256,8 @@ def add_prospect():
                            neighborhoods=sc.NEIGHBORHOODS_CABA, zones=sc.ZONES,
                            contact_statuses=sc.CONTACT_STATUSES,
                            current_suppliers=sc.CURRENT_SUPPLIERS,
-                           potential_volumes=sc.POTENTIAL_VOLUMES)
+                           potential_volumes=sc.POTENTIAL_VOLUMES,
+                           display_score_options=sc.DISPLAY_SCORE_OPTIONS)
 
 
 @app.route('/prospecto/<int:prospect_id>')
@@ -287,7 +304,8 @@ def edit_prospect(prospect_id):
                            neighborhoods=sc.NEIGHBORHOODS_CABA, zones=sc.ZONES,
                            contact_statuses=sc.CONTACT_STATUSES,
                            current_suppliers=sc.CURRENT_SUPPLIERS,
-                           potential_volumes=sc.POTENTIAL_VOLUMES)
+                           potential_volumes=sc.POTENTIAL_VOLUMES,
+                           display_score_options=sc.DISPLAY_SCORE_OPTIONS)
 
 
 @app.route('/prospecto/<int:prospect_id>/eliminar', methods=['POST'])

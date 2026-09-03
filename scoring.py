@@ -184,6 +184,13 @@ POTENTIAL_VOLUMES = [
     ("bajo",        "Bajo"),
 ]
 
+# Qué número muestra la columna "Score" del dashboard para este prospecto.
+# Puramente de presentación: no afecta el Tier ni el orden (siempre score_auto).
+DISPLAY_SCORE_OPTIONS = [
+    ("auto",   "Automático (recomendado)"),
+    ("manual", "Manual"),
+]
+
 # ── Dimensión 1 — Potencial de volumen (hasta 3 pts) ──────────────────────────
 VOLUME_POINTS = {
     "alto":        3.0,

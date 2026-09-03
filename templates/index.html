@@ -138,6 +138,7 @@
               <th>Tipo</th>
               <th>Barrio</th>
               <th class="text-center">Prioridad</th>
+              <th class="text-center">Score</th>
               <th>Estado</th>
               <th>Productos</th>
               <th class="text-end pe-4">Acciones</th>
@@ -167,9 +168,14 @@
                 {% else %}
                   <span class="score-badge badge-neutral" title="score_auto sin calcular">—</span>
                 {% endif %}
-                <div class="text-muted" style="font-size:.66rem;margin-top:3px;letter-spacing:.02em">
-                  manual {{ p.score }}
-                </div>
+              </td>
+              <td class="text-center">
+                {% if p.dashboard_score_is_manual %}
+                  <span style="font-weight:600">{{ p.dashboard_score }}</span>
+                  <span class="text-muted" style="font-size:.62rem" title="Mostrando el score manual (display_score = manual), no score_auto">(manual)</span>
+                {% else %}
+                  <span style="font-weight:600">{{ '%.1f'|format(p.dashboard_score) }}</span>
+                {% endif %}
               </td>
               <td>
                 <span class="status-badge status-{{ p.contact_status | lower | replace(' ', '-') }}">

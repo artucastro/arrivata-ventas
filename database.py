@@ -48,7 +48,7 @@ _UPDATABLE_COLUMNS = (
     'name', 'type', 'neighborhood', 'zone', 'address', 'phone', 'email',
     'instagram', 'website', 'products_interest', 'score',
     'is_premium', 'contact_status', 'notes', 'lat', 'lng', 'geocode_status',
-    'current_supplier', 'potential_volume',
+    'current_supplier', 'potential_volume', 'display_score',
 )
 
 _FLOAT_COLUMNS = frozenset({'lat', 'lng'})
@@ -69,6 +69,13 @@ def _coerce(col, value):
         except (TypeError, ValueError):
             return None
     return value
+
+
+def _display_score(data):
+    """'auto' | 'manual' — qué número muestra la columna Score del dashboard.
+    Cualquier valor que no sea exactamente 'manual' cae al default 'auto'
+    (mismo criterio defensivo que el CHECK de Postgres)."""
+    return 'manual' if data.get('display_score') == 'manual' else 'auto'
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -240,6 +247,7 @@ else:
                 geocode_status TEXT DEFAULT '',
                 current_supplier TEXT NOT NULL DEFAULT 'desconocido',
                 potential_volume TEXT NOT NULL DEFAULT 'desconocido',
+                display_score TEXT NOT NULL DEFAULT 'auto',
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
@@ -255,6 +263,9 @@ else:
         if 'potential_volume' not in cols:
             conn.execute("ALTER TABLE prospects ADD COLUMN potential_volume "
                          "TEXT NOT NULL DEFAULT 'desconocido'")
+        if 'display_score' not in cols:
+            conn.execute("ALTER TABLE prospects ADD COLUMN display_score "
+                         "TEXT NOT NULL DEFAULT 'auto'")
         conn.commit()
         conn.close()
 
@@ -320,8 +331,9 @@ def create_prospect(data):
         INSERT INTO prospects (name, type, neighborhood, zone, address, phone, email,
                               instagram, website, products_interest, score, score_auto,
                               is_premium, contact_status, notes, lat, lng, geocode_status,
-                              current_supplier, potential_volume, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                              current_supplier, potential_volume, display_score,
+                              created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
         data['name'], data.get('type', ''), data.get('neighborhood', ''),
         data.get('zone', 'CABA'), data.get('address', ''), data.get('phone', ''),
@@ -332,6 +344,7 @@ def create_prospect(data):
         data.get('notes', ''), _coerce('lat', data.get('lat')), _coerce('lng', data.get('lng')),
         data.get('geocode_status', ''),
         data.get('current_supplier', 'desconocido'), data.get('potential_volume', 'desconocido'),
+        _display_score(data),
         now, now
     ))
     conn.commit()
@@ -347,7 +360,7 @@ def update_prospect(prospect_id, data):
         UPDATE prospects SET name=?, type=?, neighborhood=?, zone=?, address=?, phone=?,
         email=?, instagram=?, website=?, products_interest=?, score=?, score_auto=?,
         is_premium=?, contact_status=?, notes=?, lat=?, lng=?,
-        current_supplier=?, potential_volume=?, updated_at=?
+        current_supplier=?, potential_volume=?, display_score=?, updated_at=?
         WHERE id=?
     ''', (
         data['name'], data.get('type', ''), data.get('neighborhood', ''),
@@ -358,6 +371,7 @@ def update_prospect(prospect_id, data):
         _coerce('is_premium', data.get('is_premium')), data.get('contact_status', 'Pendiente'),
         data.get('notes', ''), _coerce('lat', data.get('lat')), _coerce('lng', data.get('lng')),
         data.get('current_supplier', 'desconocido'), data.get('potential_volume', 'desconocido'),
+        _display_score(data),
         now, prospect_id
     ))
     conn.commit()

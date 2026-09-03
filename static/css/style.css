@@ -332,6 +332,8 @@ h1, h2, h3, h4, h5, .font-serif {
 .score-success-display { background: #e8f5ee; color: #14532d; }
 .score-warning-display { background: #fffbeb; color: #78350f; }
 .score-danger-display  { background: var(--a-red-light); color: #7f1d1d; }
+/* Tier C de score_auto: gris neutro (no rojo: "baja prioridad" no es "problema") */
+.score-neutral-display { background: #f1f5f9; color: #334155; }
 
 /* ── Page titles ── */
 .page-title {

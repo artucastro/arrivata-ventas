@@ -156,29 +156,46 @@
           <!-- Right -->
           <div class="col-12 col-lg-4">
             <div class="card border-0 mb-4">
-              <div class="card-header">Score de prioridad</div>
+              <div class="card-header">Prioridad</div>
               <div class="card-body text-center py-4">
-                <div class="score-display" id="scoreDisplay">
-                  <div class="score-number" id="scoreNumber">{{ prospect.score if prospect else 5 }}</div>
-                  <div class="score-label-text" id="scoreLabel">—</div>
-                </div>
-                <div class="mt-4 px-2">
-                  <label class="form-label">Ajuste manual (1–10)</label>
+                {% if prospect and prospect.score_auto is not none %}
+                  {% set sa = prospect.score_auto %}
+                  {% if sa >= 8 %}
+                    {% set tier = 'A' %}{% set tier_disp = 'score-success-display' %}
+                  {% elif sa >= 5 %}
+                    {% set tier = 'B' %}{% set tier_disp = 'score-warning-display' %}
+                  {% else %}
+                    {% set tier = 'C' %}{% set tier_disp = 'score-neutral-display' %}
+                  {% endif %}
+                  <div class="score-display {{ tier_disp }}">
+                    <div class="score-number">{{ '%.1f'|format(sa) }}</div>
+                    <div class="score-label-text">Tier {{ tier }}</div>
+                  </div>
+                {% else %}
+                  <div class="score-display score-neutral-display">
+                    <div class="score-number" style="font-size:2rem">—</div>
+                    <div class="score-label-text">se calcula al guardar</div>
+                  </div>
+                {% endif %}
+                <p class="text-muted mt-2 mb-0" style="font-size:.73rem;line-height:1.5">
+                  <strong>score_auto</strong> — vara de prioridad comercial. Suma 5
+                  dimensiones (volumen, contacto, proveedor, categoría, señales
+                  premium). Se recalcula sola al guardar; no se edita a mano.
+                </p>
+
+                <div class="mt-4 pt-3 px-2" style="border-top:1px solid var(--a-border)">
+                  <label class="form-label mb-1" for="scoreRange" style="font-size:.8rem">
+                    Ajuste manual (opcional):
+                    <span id="manualScoreNumber" style="font-weight:700">{{ prospect.score if prospect else 5 }}</span><span class="text-muted" style="font-weight:400"> / 10</span>
+                  </label>
                   <input type="range" name="score" class="form-range" min="1" max="10" id="scoreRange"
                          value="{{ prospect.score if prospect else 5 }}"
-                         oninput="document.getElementById('scoreNumber').textContent = this.value; updateScoreColor(parseInt(this.value))">
+                         oninput="document.getElementById('manualScoreNumber').textContent = this.value">
+                  <p class="text-muted mt-1 mb-0" style="font-size:.72rem;line-height:1.45">
+                    Anulá la vara solo si tenés una razón puntual para hacerlo.
+                    Este valor es tuyo: ningún import ni recálculo lo pisa.
+                  </p>
                 </div>
-                <p class="text-muted mt-2" style="font-size:.75rem">
-                  Ajuste manual de prioridad. Es 100% tuyo: ningún import ni
-                  recálculo lo pisa.
-                </p>
-                {% if prospect and prospect.score_auto is not none %}
-                <p class="text-muted mt-1 mb-0" style="font-size:.72rem">
-                  <i class="bi bi-calculator me-1"></i>score_auto (vara comercial):
-                  <strong>{{ '%.1f'|format(prospect.score_auto) }}</strong> / 10 —
-                  se recalcula solo al guardar.
-                </p>
-                {% endif %}
               </div>
             </div>
 
@@ -218,15 +235,8 @@
 
 {% block extra_js %}
 <script>
-function updateScoreColor(val) {
-  const disp = document.getElementById('scoreDisplay');
-  const lbl  = document.getElementById('scoreLabel');
-  disp.className = 'score-display';
-  if (val >= 8)      { disp.classList.add('score-high'); lbl.textContent = 'Alta prioridad'; }
-  else if (val >= 5) { disp.classList.add('score-med');  lbl.textContent = 'Prioridad media'; }
-  else               { disp.classList.add('score-low');  lbl.textContent = 'Prioridad baja'; }
-}
-
+// Sugerencia del score MANUAL (slider) según tipo/barrio/premium. No toca el
+// score_auto (la vara), que se recalcula en el server al guardar.
 function updateScore() {
   const tipo    = document.getElementById('typeSelect').value;
   const barrio  = document.getElementById('neighborhoodSelect').value;
@@ -235,8 +245,7 @@ function updateScore() {
     .then(r => r.json())
     .then(data => {
       document.getElementById('scoreRange').value = data.score;
-      document.getElementById('scoreNumber').textContent = data.score;
-      updateScoreColor(data.score);
+      document.getElementById('manualScoreNumber').textContent = data.score;
     });
 }
 
@@ -264,7 +273,5 @@ function toggleAllProducts() {
   const allChecked = [...cbs].every(c => c.checked);
   cbs.forEach(c => c.checked = !allChecked);
 }
-
-updateScoreColor(parseInt(document.getElementById('scoreRange').value));
 </script>
 {% endblock %}

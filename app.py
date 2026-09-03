@@ -177,6 +177,7 @@ def _map_points(prospects: list) -> list:
     result = []
     for p in prospects:
         if p.get('lat') and p.get('lng'):
+            score_auto = p.get('score_auto')
             result.append({
                 'id': p['id'],
                 'name': p['name'],
@@ -186,6 +187,11 @@ def _map_points(prospects: list) -> list:
                 'score': p['score'],
                 'score_color': sc.score_color(p['score']),
                 'score_label': sc.score_label(p['score']),
+                # Prioridad del pin en el mapa = score_auto/Tier, igual que la
+                # ficha y el dashboard (score sigue viajando arriba, para el
+                # ajuste manual chico del popup).
+                'score_auto': score_auto,
+                'tier': sc.priority_tier(score_auto) if score_auto is not None else None,
                 'contact_status': p['contact_status'],
                 'lat': p['lat'],
                 'lng': p['lng'],

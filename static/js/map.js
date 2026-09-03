@@ -1,5 +1,12 @@
 document.addEventListener('DOMContentLoaded', () => {
-  const map = L.map('map').setView([-34.603, -58.381], 13);
+  // minZoom es el piso real que protege del bug de zoom roto: si algún
+  // prospecto se geocodifica mal a cientos de km (pasó con un fallback
+  // "barrio, Buenos Aires" ambiguo — ver geocoding.py), fitBounds ya no puede
+  // alejar el mapa más allá de este nivel. El outlier queda simplemente fuera
+  // de la vista inicial en vez de arruinar el zoom de los otros ~97 pines.
+  // (maxZoom en fitBounds, más abajo, es el techo opuesto: evita acercar
+  // demasiado si algún día hay pocos marcadores muy juntos entre sí.)
+  const map = L.map('map', { minZoom: 9 }).setView([-34.603, -58.381], 13);
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
@@ -27,13 +34,20 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
+  // Varios prospectos pueden caer en la misma coordenada exacta (o muy cerca)
+  // cuando la dirección no geocodifica y se cae al centroide del barrio — ver
+  // geocoding.py. Sin agrupar, esos marcadores se superponen y se tapan entre
+  // sí. markerClusterGroup los junta en un círculo con el conteo; un click
+  // los separa (spiderfy) o hace zoom hasta que se puedan ver sueltos.
+  const markers = L.markerClusterGroup({ showCoverageOnHover: false });
+
   fetch('/api/prospects')
     .then(r => r.json())
     .then(prospects => {
       document.getElementById('map-count').textContent = `${prospects.length} pin${prospects.length !== 1 ? 's' : ''}`;
 
       prospects.forEach(p => {
-        const marker = L.marker([p.lat, p.lng], { icon: makeIcon(p.score) }).addTo(map);
+        const marker = L.marker([p.lat, p.lng], { icon: makeIcon(p.score) });
         marker.bindPopup(`
           <div style="min-width:200px">
             <div style="font-weight:700;font-size:1rem;margin-bottom:4px">${esc(p.name)}</div>
@@ -49,13 +63,15 @@ document.addEventListener('DOMContentLoaded', () => {
             <a href="/prospecto/${encodeURIComponent(p.id)}" style="font-size:.82rem;color:#1a3c5e">Ver detalle →</a>
           </div>
         `);
+        markers.addLayer(marker);
       });
+      map.addLayer(markers);
 
       if (prospects.length > 0) {
-        const group = L.featureGroup(
-          prospects.map(p => L.marker([p.lat, p.lng]))
-        );
-        map.fitBounds(group.getBounds().pad(0.1));
+        // maxZoom acota qué tan cerca hace zoom el ajuste inicial: sin esto,
+        // un solo outlier de geocoding (una dirección mal resuelta a cientos
+        // de km) fuerza un zoom-out que amontona todo el resto del mapa.
+        map.fitBounds(markers.getBounds().pad(0.1), { maxZoom: 15 });
       }
     })
     .catch(err => console.error('Error loading prospects:', err));

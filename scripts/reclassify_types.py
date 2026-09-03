@@ -47,14 +47,38 @@ _RULES = (
     ("Vinoteca", (r"\bvinoteca\b", r"\bwine\s*bar\b")),
     ("Casa de Pastas", (r"\bcasa de pastas\b", r"f[aá]brica de pastas", r"pastas caseras")),
     ("Focacciería", (r"focaccer[ií]a",)),
-    ("Pizzería Napolitana", (r"napolitana", r"napoletana")),
+    # Gourmet va ANTES que Napolitana: si dice "gourmet" tiene que ganar esa
+    # categoría, no la napolitana/italiana-genérica de abajo.
     ("Pizzería Gourmet", (r"pizzer[ií]a.*gourmet", r"gourmet.*pizzer[ií]a")),
+    ("Pizzería Napolitana", (r"napolitana", r"napoletana")),
     ("Parrilla Premium", (r"parrilla.*premium", r"premium.*parrilla")),
+    # Restaurante Italiano ANTES del fallback de "pizzería italiana/tradicional"
+    # de más abajo: una descripción compuesta tipo "Restaurante italiano /
+    # Pizzería romana artesanal" tiene que ganar acá (es un restaurante
+    # italiano con una pizzería de estilo romano, NO napolitana) — si no,
+    # el fallback la agarraría por matchear "italiano" en la mitad que
+    # describe el restaurante, no la pizzería.
     ("Restaurante Italiano", (
         r"restaurante italiano", r"\btrattoria\b", r"\bosteria\b", r"\bostería\b",
         r"cantina italiana",
     )),
 )
+
+# Separadores de cláusula para el fallback de abajo ("/", "," o " y ").
+_CLAUSE_SPLIT_RE = re.compile(r"\s*/\s*|\s*,\s*|\s+y\s+")
+
+
+def _pizzeria_italiana_o_tradicional(haystack: str) -> bool:
+    """True si ALGUNA cláusula (separada por "/", "," o " y ") menciona
+    "pizzer..." junto con "italian..." o "tradicional" EN LA MISMA cláusula.
+    Evita el falso positivo de una descripción compuesta tipo "Restaurante
+    italiano / Pizzería romana artesanal", donde "italiano" califica al
+    restaurante y no a la pizzería (esa ya la agarra la regla de Restaurante
+    Italiano, más arriba, antes de llegar acá)."""
+    for clause in _CLAUSE_SPLIT_RE.split(haystack):
+        if "pizzer" in clause and ("italian" in clause or "tradicional" in clause):
+            return True
+    return False
 
 
 def classify_type(prospect: dict) -> str:
@@ -64,6 +88,12 @@ def classify_type(prospect: dict) -> str:
     for canonical, patterns in _RULES:
         if any(re.search(p, haystack) for p in patterns):
             return canonical
+    # Fallback relajado: "pizzería italiana" / "pizzería tradicional" (sin
+    # calificador de napolitana/gourmet, que ya se probaron arriba) también
+    # cuenta como Pizzería Napolitana — en la práctica es la pizza
+    # "italiana"/tradicional por excelencia acá.
+    if _pizzeria_italiana_o_tradicional(haystack):
+        return "Pizzería Napolitana"
     return "Otro"
 
 

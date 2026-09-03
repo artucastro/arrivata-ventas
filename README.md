@@ -16,7 +16,8 @@ productos de Arrivata (quesos artesanales italianos).
 
 ## Stack
 
-Python 3.11 · Flask · SQLite · Bootstrap 5 · Leaflet · SDK `anthropic`
+Python 3.11 · Flask · PostgreSQL (prod) / SQLite (fallback local) · Bootstrap 5 ·
+Leaflet · SDK `anthropic`
 
 ## Puesta en marcha
 
@@ -28,6 +29,38 @@ python app.py                   # http://localhost:5001
 ```
 
 En Windows también sirve `start.bat`.
+
+## Base de datos (PostgreSQL / SQLite)
+
+La app elige el backend según la variable de entorno **`DATABASE_URL`** (en `.env`):
+
+| `DATABASE_URL`            | Backend            | Cuándo                                        |
+|--------------------------|--------------------|-----------------------------------------------|
+| con valor (URL Postgres) | PostgreSQL + pool  | **Producción** y acceso multi-usuario. Siempre en la web. |
+| vacía / sin definir      | SQLite (`arrivata.db`) | Desarrollo local sin Postgres corriendo.  |
+
+```
+# .env  ── producción / desarrollo contra la base compartida
+DATABASE_URL=postgresql://USER:PASSWORD@HOST/DBNAME?sslmode=require
+
+# .env  ── desarrollo 100% local, sin Postgres
+DATABASE_URL=
+```
+
+No hay que tocar código para cambiar de uno a otro: solo la variable. El esquema
+Postgres está en [`migrations/001_init_postgres.sql`](migrations/001_init_postgres.sql)
+y `db.init_db()` lo aplica solo (es idempotente) al arrancar la app.
+
+### Migrar los datos de SQLite a Postgres (una sola vez)
+
+```bash
+# con DATABASE_URL apuntando al Postgres destino (vacío)
+python scripts/migrate_sqlite_to_postgres.py
+```
+
+Copia todas las filas preservando ids y valores, resetea la secuencia del `id`,
+y falla si el conteo origen/destino no coincide. Es seguro re-ejecutarlo (no
+duplica: `INSERT ... ON CONFLICT (id) DO NOTHING`).
 
 ### Google Sheets (opcional)
 
@@ -43,6 +76,10 @@ En Windows también sirve `start.bat`.
 ```bash
 python tests/test_import_protection.py
 ```
+
+Corre contra el backend que indique `DATABASE_URL`. Con Postgres, el test crea un
+**esquema temporal propio** (`test_import_<pid>_<ts>`), corre ahí y lo borra al
+final — nunca toca la tabla `prospects` real. Con SQLite usa un archivo temporal.
 
 ## Archivos que NO están en el repo
 

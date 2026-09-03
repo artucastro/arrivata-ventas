@@ -9,14 +9,13 @@ Después:  git add docs/data.json && git commit -m "Actualiza datos" && git push
 """
 import json
 import os
-import sqlite3
 import sys
 from datetime import date
 
+import database as db
 import scoring as sc
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-DB = os.path.join(HERE, 'arrivata.db')
 OUT = os.path.join(HERE, 'docs', 'data.json')
 
 ANON = '--anon' in sys.argv
@@ -42,10 +41,9 @@ def _anon_row(i, r):
 
 
 def main():
-    conn = sqlite3.connect(DB)
-    conn.row_factory = sqlite3.Row
-    rows = [dict(x) for x in conn.execute('SELECT * FROM prospects ORDER BY score DESC, name ASC')]
-    conn.close()
+    # Usa la capa de persistencia (Postgres si DATABASE_URL está seteada, si no
+    # SQLite local). get_all_prospects() ya ordena por score DESC, name ASC.
+    rows = db.get_all_prospects()
 
     out = []
     for i, r in enumerate(rows):

@@ -36,15 +36,28 @@ python -c "import secrets; print('FLASK_SECRET_KEY=' + secrets.token_hex(32))" >
 echo "APP_USER=arrivata"            >> .env
 echo "APP_PASSWORD=ELEGI_UNA_CLAVE" >> .env
 echo "FLASK_DEBUG=0"                >> .env
-nano .env   # cambiá ELEGI_UNA_CLAVE por tu contraseña real; Ctrl+O, Enter, Ctrl+X
+echo "DATABASE_URL=postgresql://USER:PASSWORD@HOST/DBNAME?sslmode=require" >> .env
+nano .env   # cambiá ELEGI_UNA_CLAVE y pegá la DATABASE_URL real; Ctrl+O, Enter, Ctrl+X
 ```
 
 `APP_USER` + `APP_PASSWORD` son el usuario y contraseña con los que vas a entrar a la app.
 
-## 4. Subir la base de datos actual
+`DATABASE_URL` es la conexión al PostgreSQL (p. ej. Neon). **Es obligatoria en la
+web**: con varios vendedores entrando a la vez, SQLite no sirve. Si se dejara sin
+definir, la app caería a SQLite local (solo para desarrollo).
 
-En **Files**, navegá a `/home/TU_USUARIO/arrivata-ventas/` → botón **Upload a file** →
-subí tu `arrivata.db` (está en la carpeta del proyecto en tu PC).
+## 4. Cargar la base de datos
+
+La primera vez, migrá los datos de tu `arrivata.db` local al Postgres. **Desde tu
+PC** (con la misma `DATABASE_URL` en tu `.env`):
+
+```bash
+python scripts/migrate_sqlite_to_postgres.py
+```
+
+El esquema de la tabla lo crea la propia app al arrancar (`db.init_db()` aplica
+`migrations/001_init_postgres.sql`, que es idempotente). En adelante la base vive
+en Postgres: no hay archivo `.db` que subir ni respaldar en el server.
 
 ## 5. Crear la Web App
 

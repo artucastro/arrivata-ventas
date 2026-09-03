@@ -1,8 +1,34 @@
-import sqlite3
+"""Capa de persistencia de Arrivata.
+
+Backend según entorno:
+
+  * DATABASE_URL seteada  -> PostgreSQL (producción / multi-usuario). Se usa un
+    pool de conexiones básico (psycopg2). Es el modo obligatorio en la web.
+  * DATABASE_URL ausente  -> SQLite local (arrivata.db). Fallback para desarrollo
+    sin Postgres corriendo.
+
+El resto del código (app.py, tests, scripts) usa siempre las mismas funciones;
+la diferencia de backend queda encapsulada acá. Las queries se escriben con el
+placeholder `?` (estilo SQLite) y, para Postgres, se traducen a `%s` al vuelo.
+"""
 import os
+import re
+import threading
 from datetime import datetime
 
-DB_PATH = os.environ.get('ARRIVATA_DB_PATH') or os.path.join(os.path.dirname(__file__), 'arrivata.db')
+try:  # cargar .env aunque database se importe sin pasar por app.py (tests, scripts)
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+except Exception:  # dotenv es opcional
+    pass
+
+DATABASE_URL = (os.environ.get("DATABASE_URL") or "").strip()
+USE_POSTGRES = bool(DATABASE_URL)
+
+# Ruta del SQLite local (solo se usa si USE_POSTGRES es False).
+DB_PATH = os.environ.get("ARRIVATA_DB_PATH") or os.path.join(os.path.dirname(__file__), "arrivata.db")
+
+_MIGRATION_SQL = os.path.join(os.path.dirname(__file__), "migrations", "001_init_postgres.sql")
 
 # Campos que se cargan / ajustan a mano en la app: una importación (Sheets o IA)
 # NUNCA los pisa cuando el prospecto ya existe, aunque el origen traiga otro valor.
@@ -20,49 +46,207 @@ _UPDATABLE_COLUMNS = (
     'is_premium', 'contact_status', 'notes', 'lat', 'lng', 'geocode_status',
 )
 
-
-def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+_FLOAT_COLUMNS = frozenset({'lat', 'lng'})
+_INT_COLUMNS = frozenset({'score', 'score_auto'})
 
 
-def init_db():
-    conn = get_db()
-    conn.execute('''
-        CREATE TABLE IF NOT EXISTS prospects (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            type TEXT DEFAULT '',
-            neighborhood TEXT DEFAULT '',
-            zone TEXT DEFAULT 'CABA',
-            address TEXT DEFAULT '',
-            phone TEXT DEFAULT '',
-            email TEXT DEFAULT '',
-            instagram TEXT DEFAULT '',
-            website TEXT DEFAULT '',
-            products_interest TEXT DEFAULT '',
-            score INTEGER DEFAULT 5,
-            score_auto INTEGER DEFAULT 5,
-            is_premium INTEGER DEFAULT 0,
-            contact_status TEXT DEFAULT 'Pendiente',
-            notes TEXT DEFAULT '',
-            lat REAL,
-            lng REAL,
-            geocode_status TEXT DEFAULT '',
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    # Migración para bases creadas antes de la columna geocode_status.
-    # Valores: '' (sin intentar) | 'ok' | 'pendiente' (falló, reintentar) | 'sin_resultado'
-    cols = [row[1] for row in conn.execute("PRAGMA table_info(prospects)")]
-    if 'geocode_status' not in cols:
-        conn.execute("ALTER TABLE prospects ADD COLUMN geocode_status TEXT DEFAULT ''")
-    conn.commit()
-    conn.close()
+def _coerce(col, value):
+    """Normaliza tipos antes de mandarlos al driver. SQLite es laxo (afinidad de
+    tipos); Postgres no castea texto->numérico en un parámetro, así que un
+    '  -34.59  ' que llega de un form hay que convertirlo acá."""
+    if col == 'is_premium':
+        return 1 if value else 0
+    if col in _FLOAT_COLUMNS or col in _INT_COLUMNS:
+        if value is None or value == '':
+            return None
+        try:
+            return float(value) if col in _FLOAT_COLUMNS else int(value)
+        except (TypeError, ValueError):
+            return None
+    return value
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Backend PostgreSQL
+# ─────────────────────────────────────────────────────────────────────────────
+if USE_POSTGRES:
+    import psycopg2
+    import psycopg2.extras
+    import psycopg2.pool
+
+    _POOL = None
+    _POOL_LOCK = threading.Lock()
+    # Esquema opcional para aislar los tests de la tabla real (ver set_pg_schema).
+    _PG_SCHEMA = (os.environ.get("ARRIVATA_PG_SCHEMA") or "").strip()
+
+    def _get_pool():
+        global _POOL
+        if _POOL is None:
+            with _POOL_LOCK:
+                if _POOL is None:
+                    _POOL = psycopg2.pool.ThreadedConnectionPool(
+                        minconn=1, maxconn=10, dsn=DATABASE_URL
+                    )
+        return _POOL
+
+    _IDENT_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*$')
+
+    def set_pg_schema(name):
+        """Crea (si no existe) y activa un esquema como search_path para todas las
+        conexiones nuevas. Pensado para los tests: aísla la tabla `prospects` de
+        test de la de producción sin tocar los datos reales."""
+        global _PG_SCHEMA
+        if not _IDENT_RE.match(name):
+            raise ValueError(f"nombre de esquema inválido: {name!r}")
+        raw = _get_pool().getconn()
+        try:
+            with raw.cursor() as cur:
+                cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{name}"')
+            raw.commit()
+        finally:
+            _get_pool().putconn(raw)
+        _PG_SCHEMA = name
+
+    def drop_pg_schema(name):
+        global _PG_SCHEMA
+        if not _IDENT_RE.match(name):
+            raise ValueError(f"nombre de esquema inválido: {name!r}")
+        raw = _get_pool().getconn()
+        try:
+            with raw.cursor() as cur:
+                cur.execute(f'DROP SCHEMA IF EXISTS "{name}" CASCADE')
+            raw.commit()
+        finally:
+            _get_pool().putconn(raw)
+        if _PG_SCHEMA == name:
+            _PG_SCHEMA = ""
+
+    class _PgCursor:
+        """Envuelve un cursor psycopg2 para que exponga la misma superficie que
+        usa el código pensado para sqlite3 (fetchone/fetchall/iteración +
+        lastrowid). Las filas son psycopg2 DictRow: soportan row['col'], row[0]
+        y dict(row), igual que sqlite3.Row."""
+
+        def __init__(self, cur, lastrowid=None):
+            self._cur = cur
+            self.lastrowid = lastrowid
+
+        def fetchone(self):
+            return self._cur.fetchone()
+
+        def fetchall(self):
+            return self._cur.fetchall()
+
+        def __iter__(self):
+            return iter(self._cur.fetchall())
+
+    class _PgConn:
+        """Conexión con API mínima estilo sqlite3: execute() / commit() / close()."""
+
+        def __init__(self, raw):
+            self._raw = raw
+
+        def execute(self, sql, params=()):
+            # `?`  -> `%s` ; `%` literal -> `%%` (psycopg2 interpola cuando se pasan
+            # params). Orden importante: primero duplicar `%`, después meter `%s`.
+            q = sql.replace('%', '%%').replace('?', '%s')
+            want_id = (
+                q.lstrip()[:6].upper() == 'INSERT'
+                and 'RETURNING' not in q.upper()
+            )
+            if want_id:
+                q = q.rstrip().rstrip(';') + ' RETURNING id'
+            cur = self._raw.cursor(cursor_factory=psycopg2.extras.DictCursor)
+            # Siempre se pasa una secuencia (aunque sea vacía) para que psycopg2
+            # haga el des-escapado de `%%` -> `%` de forma consistente.
+            cur.execute(q, list(params))
+            last = None
+            if want_id:
+                row = cur.fetchone()
+                last = row['id'] if row is not None else None
+            return _PgCursor(cur, lastrowid=last)
+
+        def executescript(self, sql):
+            with self._raw.cursor() as cur:
+                cur.execute(sql)
+            self._raw.commit()
+
+        def commit(self):
+            self._raw.commit()
+
+        def close(self):
+            try:
+                self._raw.rollback()  # descarta lo no comiteado antes de devolver
+            except Exception:
+                pass
+            _get_pool().putconn(self._raw)
+
+    def get_db():
+        raw = _get_pool().getconn()
+        if _PG_SCHEMA:
+            with raw.cursor() as cur:
+                cur.execute(f'SET search_path TO "{_PG_SCHEMA}", public')
+            raw.commit()
+        return _PgConn(raw)
+
+    def init_db():
+        with open(_MIGRATION_SQL, "r", encoding="utf-8") as f:
+            ddl = f.read()
+        conn = get_db()
+        conn.executescript(ddl)
+        conn.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Backend SQLite (fallback local)
+# ─────────────────────────────────────────────────────────────────────────────
+else:
+    import sqlite3
+
+    def get_db():
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def init_db():
+        conn = get_db()
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS prospects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                type TEXT DEFAULT '',
+                neighborhood TEXT DEFAULT '',
+                zone TEXT DEFAULT 'CABA',
+                address TEXT DEFAULT '',
+                phone TEXT DEFAULT '',
+                email TEXT DEFAULT '',
+                instagram TEXT DEFAULT '',
+                website TEXT DEFAULT '',
+                products_interest TEXT DEFAULT '',
+                score INTEGER DEFAULT 5,
+                score_auto INTEGER DEFAULT 5,
+                is_premium INTEGER DEFAULT 0,
+                contact_status TEXT DEFAULT 'Pendiente',
+                notes TEXT DEFAULT '',
+                lat REAL,
+                lng REAL,
+                geocode_status TEXT DEFAULT '',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        # Migración para bases creadas antes de la columna geocode_status.
+        # Valores: '' (sin intentar) | 'ok' | 'pendiente' (falló, reintentar) | 'sin_resultado'
+        cols = [row[1] for row in conn.execute("PRAGMA table_info(prospects)")]
+        if 'geocode_status' not in cols:
+            conn.execute("ALTER TABLE prospects ADD COLUMN geocode_status TEXT DEFAULT ''")
+        conn.commit()
+        conn.close()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# API de negocio (idéntica para ambos backends)
+# ─────────────────────────────────────────────────────────────────────────────
 def get_all_prospects(filters=None):
     conn = get_db()
     query = 'SELECT * FROM prospects'
@@ -122,9 +306,10 @@ def create_prospect(data):
         data['name'], data.get('type', ''), data.get('neighborhood', ''),
         data.get('zone', 'CABA'), data.get('address', ''), data.get('phone', ''),
         data.get('email', ''), data.get('instagram', ''), data.get('website', ''),
-        data.get('products_interest', ''), data.get('score', 5), data.get('score_auto', 5),
-        1 if data.get('is_premium') else 0, data.get('contact_status', 'Pendiente'),
-        data.get('notes', ''), data.get('lat'), data.get('lng'),
+        data.get('products_interest', ''), _coerce('score', data.get('score', 5)),
+        _coerce('score_auto', data.get('score_auto', 5)),
+        _coerce('is_premium', data.get('is_premium')), data.get('contact_status', 'Pendiente'),
+        data.get('notes', ''), _coerce('lat', data.get('lat')), _coerce('lng', data.get('lng')),
         data.get('geocode_status', ''), now, now
     ))
     conn.commit()
@@ -145,9 +330,11 @@ def update_prospect(prospect_id, data):
         data['name'], data.get('type', ''), data.get('neighborhood', ''),
         data.get('zone', 'CABA'), data.get('address', ''), data.get('phone', ''),
         data.get('email', ''), data.get('instagram', ''), data.get('website', ''),
-        data.get('products_interest', ''), data.get('score', 5), data.get('score_auto', 5),
-        1 if data.get('is_premium') else 0, data.get('contact_status', 'Pendiente'),
-        data.get('notes', ''), data.get('lat'), data.get('lng'), now, prospect_id
+        data.get('products_interest', ''), _coerce('score', data.get('score', 5)),
+        _coerce('score_auto', data.get('score_auto', 5)),
+        _coerce('is_premium', data.get('is_premium')), data.get('contact_status', 'Pendiente'),
+        data.get('notes', ''), _coerce('lat', data.get('lat')), _coerce('lng', data.get('lng')),
+        now, prospect_id
     ))
     conn.commit()
     conn.close()
@@ -160,7 +347,7 @@ def update_prospect_partial(prospect_id, data: dict, skip=frozenset()):
     cols = [c for c in _UPDATABLE_COLUMNS if c in data and c not in skip]
     if not cols:
         return
-    values = [(1 if data[c] else 0) if c == 'is_premium' else data[c] for c in cols]
+    values = [_coerce(c, data[c]) for c in cols]
     set_clause = ', '.join(f'{c}=?' for c in cols) + ', updated_at=?'
     values += [datetime.now().isoformat(), prospect_id]
     conn = get_db()
@@ -184,7 +371,8 @@ def update_prospect_location(prospect_id, lat, lng, geocode_status):
     conn = get_db()
     conn.execute(
         'UPDATE prospects SET lat=?, lng=?, geocode_status=?, updated_at=? WHERE id=?',
-        (lat, lng, geocode_status, datetime.now().isoformat(), prospect_id)
+        (_coerce('lat', lat), _coerce('lng', lng), geocode_status,
+         datetime.now().isoformat(), prospect_id)
     )
     conn.commit()
     conn.close()

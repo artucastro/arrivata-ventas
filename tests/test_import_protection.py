@@ -13,6 +13,7 @@ Uso:  python tests/test_import_protection.py
 import os
 import sys
 import tempfile
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -45,11 +46,36 @@ def sheet_row(**over):
     return row
 
 
-def main():
+def _setup():
+    """Devuelve una función de teardown. Aísla la corrida:
+      * Postgres -> tabla `prospects` en un esquema temporal propio (NO toca los
+        datos reales de producción), que se borra al final.
+      * SQLite   -> archivo temporal descartable.
+    La lógica de negocio que se testea es idéntica; solo cambia el sustrato."""
+    if getattr(db, 'USE_POSTGRES', False):
+        schema = f"test_import_{os.getpid()}_{int(time.time())}"
+        db.set_pg_schema(schema)
+        db.init_db()
+        print(f"[infra] Postgres, esquema temporal: {schema}")
+        return lambda: db.drop_pg_schema(schema)
+
     tmp = tempfile.NamedTemporaryFile(suffix='.db', delete=False)
     tmp.close()
     db.DB_PATH = tmp.name
     db.init_db()
+    print(f"[infra] SQLite temporal: {tmp.name}")
+    return lambda: os.unlink(tmp.name)
+
+
+def main():
+    _teardown = _setup()
+    try:
+        _run()
+    finally:
+        _teardown()
+
+
+def _run():
 
     # ── 1) Prospecto existente con datos cargados a mano ──────────────────────
     # is_premium y products_interest se setean a valores OPUESTOS a lo que la
@@ -124,8 +150,6 @@ def main():
     check("score sigue 9", p['score'], 9)
     check("is_premium sigue 0", p['is_premium'], 0)
     check("products_interest sigue manual", p['products_interest'], 'Ricotta|Provola Ahumada')
-
-    os.unlink(tmp.name)
 
     print("\n" + ("=" * 50))
     if _fails:

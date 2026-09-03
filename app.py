@@ -571,6 +571,17 @@ def import_search_results():
                 'notes': r.get('notes', ''),
                 'lat': lat,
                 'lng': lng,
+                # Datos nuevos de la búsqueda con IA.
+                'price_range': r.get('price_range', 'desconocido'),
+                'google_rating': r.get('google_rating'),
+                'google_review_count': r.get('google_review_count'),
+                'social_media_status': r.get('social_media_status', 'sin_datos'),
+                'chain_size': r.get('chain_size', 'desconocido'),
+                'cheese_menu_notes': r.get('cheese_menu_notes', ''),
+                'ai_summary': r.get('ai_summary', ''),
+                # Inferencias de la IA — protección condicional más abajo.
+                'current_supplier': r.get('current_supplier', 'desconocido'),
+                'potential_volume': r.get('potential_volume', 'desconocido'),
             }
             # email/instagram/website: solo si la IA los trae; si vienen vacíos no
             # se mandan, para no borrar un valor cargado a mano en un update.
@@ -578,6 +589,18 @@ def import_search_results():
                 if not data[k]:
                     data.pop(k)
             prior = db.get_prospect_by_key(data['name'], data.get('neighborhood', ''))
+
+            # Protección CONDICIONAL (distinta de IMPORT_PROTECTED_FIELDS, que
+            # protege siempre): current_supplier/potential_volume son
+            # inferencias de la IA de baja confianza. Si el prospecto ya
+            # existía y una persona ya cargó un valor real (no 'desconocido'
+            # — vía el form, después de una visita), la búsqueda NUNCA lo
+            # pisa, sin importar qué infiera esta vez. Si estaba en
+            # 'desconocido' (nunca tocado), sí se completa con la inferencia.
+            for field in ('current_supplier', 'potential_volume'):
+                if prior and prior.get(field, 'desconocido') != 'desconocido':
+                    data.pop(field, None)
+
             prior_had_coords = bool(prior and prior.get('lat') is not None)
             new_id, created = db.upsert_prospect(data, protect_on_update=db.IMPORT_PROTECTED_FIELDS)
             # Coords: solo en alta o si no tenía ubicación; nunca pisamos una ya cargada.

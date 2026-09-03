@@ -49,10 +49,12 @@ _UPDATABLE_COLUMNS = (
     'instagram', 'website', 'products_interest', 'score',
     'is_premium', 'contact_status', 'notes', 'lat', 'lng', 'geocode_status',
     'current_supplier', 'potential_volume', 'display_score',
+    'price_range', 'google_rating', 'google_review_count', 'social_media_status',
+    'chain_size', 'cheese_menu_notes', 'ai_summary',
 )
 
-_FLOAT_COLUMNS = frozenset({'lat', 'lng'})
-_INT_COLUMNS = frozenset({'score'})
+_FLOAT_COLUMNS = frozenset({'lat', 'lng', 'google_rating'})
+_INT_COLUMNS = frozenset({'score', 'google_review_count'})
 
 
 def _coerce(col, value):
@@ -249,6 +251,13 @@ else:
                 current_supplier TEXT NOT NULL DEFAULT 'desconocido',
                 potential_volume TEXT NOT NULL DEFAULT 'desconocido',
                 display_score TEXT NOT NULL DEFAULT 'auto',
+                price_range TEXT NOT NULL DEFAULT 'desconocido',
+                google_rating REAL,
+                google_review_count INTEGER,
+                social_media_status TEXT NOT NULL DEFAULT 'sin_datos',
+                chain_size TEXT NOT NULL DEFAULT 'desconocido',
+                cheese_menu_notes TEXT NOT NULL DEFAULT '',
+                ai_summary TEXT NOT NULL DEFAULT '',
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
@@ -267,6 +276,23 @@ else:
         if 'display_score' not in cols:
             conn.execute("ALTER TABLE prospects ADD COLUMN display_score "
                          "TEXT NOT NULL DEFAULT 'auto'")
+        if 'price_range' not in cols:
+            conn.execute("ALTER TABLE prospects ADD COLUMN price_range "
+                         "TEXT NOT NULL DEFAULT 'desconocido'")
+        if 'google_rating' not in cols:
+            conn.execute("ALTER TABLE prospects ADD COLUMN google_rating REAL")
+        if 'google_review_count' not in cols:
+            conn.execute("ALTER TABLE prospects ADD COLUMN google_review_count INTEGER")
+        if 'social_media_status' not in cols:
+            conn.execute("ALTER TABLE prospects ADD COLUMN social_media_status "
+                         "TEXT NOT NULL DEFAULT 'sin_datos'")
+        if 'chain_size' not in cols:
+            conn.execute("ALTER TABLE prospects ADD COLUMN chain_size "
+                         "TEXT NOT NULL DEFAULT 'desconocido'")
+        if 'cheese_menu_notes' not in cols:
+            conn.execute("ALTER TABLE prospects ADD COLUMN cheese_menu_notes TEXT NOT NULL DEFAULT ''")
+        if 'ai_summary' not in cols:
+            conn.execute("ALTER TABLE prospects ADD COLUMN ai_summary TEXT NOT NULL DEFAULT ''")
 
         # Tabla nueva (no hace falta ALTER incremental, se crea directo con todo).
         conn.execute('''
@@ -354,8 +380,10 @@ def create_prospect(data):
                               instagram, website, products_interest, score, score_auto,
                               is_premium, contact_status, notes, lat, lng, geocode_status,
                               current_supplier, potential_volume, display_score,
+                              price_range, google_rating, google_review_count,
+                              social_media_status, chain_size, cheese_menu_notes, ai_summary,
                               created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', (
         data['name'], data.get('type', ''), data.get('neighborhood', ''),
         data.get('zone', 'CABA'), data.get('address', ''), data.get('phone', ''),
@@ -367,6 +395,10 @@ def create_prospect(data):
         data.get('geocode_status', ''),
         data.get('current_supplier', 'desconocido'), data.get('potential_volume', 'desconocido'),
         _display_score(data),
+        data.get('price_range', 'desconocido'), _coerce('google_rating', data.get('google_rating')),
+        _coerce('google_review_count', data.get('google_review_count')),
+        data.get('social_media_status', 'sin_datos'), data.get('chain_size', 'desconocido'),
+        data.get('cheese_menu_notes', ''), data.get('ai_summary', ''),
         now, now
     ))
     conn.commit()
@@ -382,7 +414,10 @@ def update_prospect(prospect_id, data):
         UPDATE prospects SET name=?, type=?, neighborhood=?, zone=?, address=?, phone=?,
         email=?, instagram=?, website=?, products_interest=?, score=?, score_auto=?,
         is_premium=?, contact_status=?, notes=?, lat=?, lng=?,
-        current_supplier=?, potential_volume=?, display_score=?, updated_at=?
+        current_supplier=?, potential_volume=?, display_score=?,
+        price_range=?, google_rating=?, google_review_count=?,
+        social_media_status=?, chain_size=?, cheese_menu_notes=?, ai_summary=?,
+        updated_at=?
         WHERE id=?
     ''', (
         data['name'], data.get('type', ''), data.get('neighborhood', ''),
@@ -394,6 +429,10 @@ def update_prospect(prospect_id, data):
         data.get('notes', ''), _coerce('lat', data.get('lat')), _coerce('lng', data.get('lng')),
         data.get('current_supplier', 'desconocido'), data.get('potential_volume', 'desconocido'),
         _display_score(data),
+        data.get('price_range', 'desconocido'), _coerce('google_rating', data.get('google_rating')),
+        _coerce('google_review_count', data.get('google_review_count')),
+        data.get('social_media_status', 'sin_datos'), data.get('chain_size', 'desconocido'),
+        data.get('cheese_menu_notes', ''), data.get('ai_summary', ''),
         now, prospect_id
     ))
     conn.commit()

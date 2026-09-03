@@ -51,6 +51,36 @@
                 <dd class="col-7">{{ supplier_label }}</dd>
                 <dt class="col-5 text-muted fw-normal">Volumen</dt>
                 <dd class="col-7">{{ volume_label }}</dd>
+                <dt class="col-5 text-muted fw-normal">Precio</dt>
+                <dd class="col-7">
+                  {% if prospect.price_range and prospect.price_range != 'desconocido' %}
+                    {{ prospect.price_range }}
+                  {% else %}<span class="text-muted">Sin evaluar</span>{% endif %}
+                </dd>
+                <dt class="col-5 text-muted fw-normal">Rating Google</dt>
+                <dd class="col-7">
+                  {% if prospect.google_rating is not none %}
+                    <i class="bi bi-star-fill" style="color:#f5a623;font-size:.75rem"></i>
+                    {{ '%.1f'|format(prospect.google_rating) }}
+                    {% if prospect.google_review_count %}
+                      <span class="text-muted" style="font-size:.78rem">({{ prospect.google_review_count }} reseñas)</span>
+                    {% endif %}
+                  {% else %}<span class="text-muted">—</span>{% endif %}
+                </dd>
+                <dt class="col-5 text-muted fw-normal">Tamaño de cadena</dt>
+                <dd class="col-7">
+                  {% if prospect.chain_size and prospect.chain_size != 'desconocido' %}
+                    {{ prospect.chain_size | replace('_', ' ') | capitalize }}
+                  {% else %}<span class="text-muted">Sin evaluar</span>{% endif %}
+                </dd>
+                <dt class="col-5 text-muted fw-normal">Redes sociales</dt>
+                <dd class="col-7">
+                  {% if prospect.social_media_status == 'activa' %}
+                    <span class="text-muted">Activa</span>
+                  {% elif prospect.social_media_status == 'inactiva' %}
+                    <span class="text-muted">Inactiva</span>
+                  {% else %}<span class="text-muted">Sin datos</span>{% endif %}
+                </dd>
               </dl>
             </div>
           </div>
@@ -87,6 +117,20 @@
           </div>
         </div>
       </div>
+
+      {% if prospect.ai_summary %}
+      <div class="card border-0 mb-3" style="background:var(--a-bg-2)">
+        <div class="card-body">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <i class="bi bi-stars" style="color:var(--a-red)"></i>
+            <span style="font-size:.72rem;font-weight:600;letter-spacing:.04em;color:var(--a-gray)">
+              GENERADO POR IA — BÚSQUEDA
+            </span>
+          </div>
+          <p class="mb-0" style="font-size:.88rem;line-height:1.7;font-style:italic">{{ prospect.ai_summary }}</p>
+        </div>
+      </div>
+      {% endif %}
 
       {% if prospect.notes %}
       <div class="card border-0 mb-3">

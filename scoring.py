@@ -219,12 +219,27 @@ SUPPLIER_POINTS = {
 CATEGORY_HIGH_POINTS  = 1.5
 CATEGORY_MID_POINTS   = 1.0
 CATEGORY_OTHER_POINTS = 0.5
-CATEGORY_HIGH_TYPES = frozenset(t.lower() for t in (
-    "Restaurante Italiano", "Vinoteca", "Casa de Pastas",
-))
-CATEGORY_MID_TYPES = frozenset(t.lower() for t in (
+_CATEGORY_HIGH_TYPES_CANON = ("Restaurante Italiano", "Vinoteca", "Casa de Pastas")
+_CATEGORY_MID_TYPES_CANON = (
     "Pizzería Napolitana", "Pizzería Gourmet", "Parrilla Premium", "Focacciería",
-))
+)
+CATEGORY_HIGH_TYPES = frozenset(t.lower() for t in _CATEGORY_HIGH_TYPES_CANON)
+CATEGORY_MID_TYPES = frozenset(t.lower() for t in _CATEGORY_MID_TYPES_CANON)
+
+# Lista cerrada de `type` para datos que vienen de la IA (búsqueda) o de un
+# backfill — nunca texto libre. Unión de las dos categorías de arriba + "Otro"
+# como fallback explícito. (Un `type` fuera de esta lista de todos modos cae
+# en CATEGORY_OTHER_POINTS en _category_points — esto es para que el STRING
+# que se guarda sea el canónico, no cualquier variante de texto libre.)
+CLOSED_TYPES = _CATEGORY_HIGH_TYPES_CANON + _CATEGORY_MID_TYPES_CANON + ("Otro",)
+_CLOSED_TYPES_LOOKUP = {t.lower(): t for t in CLOSED_TYPES}
+
+
+def normalize_closed_type(value) -> str:
+    """Matchea `value` (case-insensitive, string completo) contra CLOSED_TYPES;
+    'Otro' si no matchea nada. Usar siempre que el `type` tenga que salir de
+    la lista cerrada (parseo de IA, backfill) — nunca confiar en texto libre."""
+    return _CLOSED_TYPES_LOOKUP.get((value or "").strip().lower(), "Otro")
 
 # ── Dimensión 5 — Señales premium (hasta 1 pt) ───────────────────────────────
 PREMIUM_FLAG_POINTS = 1.0   # is_premium == 1

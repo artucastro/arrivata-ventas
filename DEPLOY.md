@@ -179,11 +179,20 @@ con el botón **Manual Deploy**.
 - La API de Anthropic (búsqueda con IA) no tiene ninguna restricción de
   salida en Render (a diferencia de PythonAnywhere, que la bloqueaba en el
   plan gratis) — anda igual que en local.
-- Solo 512 MB de RAM. `render.yaml` fija `--workers 1` a propósito (más de
-  un worker multiplica el footprint entero de la app en memoria) y
-  `--timeout 120` (una búsqueda con IA puede tardar minuto y medio o más;
-  el default de gunicorn, 30s, la mataría a mitad de camino). Si en el
-  dashboard de Render (**Settings → Start Command**, o una env var
-  `WEB_CONCURRENCY`) hay algo puesto a mano que pise este `startCommand`,
-  eso gana por sobre lo que diga `render.yaml` — revisar ahí primero si
-  vuelve a aparecer un `Worker was sent SIGKILL!` en los logs.
+- Solo 512 MB de RAM. `render.yaml` usa `--workers 1 --worker-class gthread
+  --threads 4` — un solo proceso (le alcanza de sobra en memoria) pero con 4
+  threads, para que una búsqueda con IA larga (~100s+) no deje a la app
+  totalmente sorda mientras corre: sin esto, ni el health check de Render ni
+  un segundo usuario navegando podían recibir respuesta hasta que la
+  búsqueda terminaba, y Render terminaba reiniciando el servicio pensando
+  que se había caído (cortando la búsqueda en curso con un 502). También
+  fija `--timeout 120` (una búsqueda con IA puede tardar minuto y medio o
+  más; el default de gunicorn, 30s, la mataría a mitad de camino — mensaje
+  de log `Worker was sent SIGKILL! Perhaps out of memory?`, que a pesar del
+  texto no es necesariamente un problema de memoria: gunicorn lo imprime
+  igual para cualquier muerte por timeout propio). Si una búsqueda de "todo
+  AMBA" sigue muriendo o el health check sigue fallando, subir el timeout
+  y/o los threads. Si en el dashboard de Render (**Settings → Start
+  Command**, o una env var `WEB_CONCURRENCY`) hay algo puesto a mano que
+  pise este `startCommand`, eso gana por sobre lo que diga `render.yaml` —
+  revisarlo ahí primero si el problema reaparece.

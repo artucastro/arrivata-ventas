@@ -15,15 +15,33 @@ services:
     # Render inyecta el puerto a usar en $PORT — gunicorn tiene que bindear ahí,
     # no a un puerto fijo (5001, el que usa app.py en dev, no aplica acá).
     #
-    # --workers 1: en 512 MB de RAM (plan free) y con solo 2 usuarios reales,
-    # un único worker alcanza de sobra — sin --workers, gunicorn ya default
-    # a 1 salvo que la env var WEB_CONCURRENCY diga otra cosa (revisar el
-    # dashboard de Render por las dudas: Settings → Start Command / Environment,
-    # un valor puesto ahí a mano pisa este startCommand). Fijarlo explícito acá
-    # es la forma más simple de blindarse contra cualquier sorpresa: sin
-    # concurrencia real entre requests, pero cada worker de más multiplica el
-    # footprint de memoria entero de la app (Flask + anthropic + gspread +
-    # google-auth + psycopg2 + su propio pool de conexiones a Postgres).
+    # NO alcanza con un solo worker: mientras está ocupado con una búsqueda
+    # con IA (~100s), no puede aceptar NINGUNA otra conexión — ni el health
+    # check HTTP que manda Render cada cierto tiempo (timeout de 5s propio de
+    # Render, mecanismo aparte del --timeout de gunicorn de más abajo), ni un
+    # segundo usuario (Emmanuel) navegando la app en simultáneo. Render
+    # interpreta el health check fallido como instancia caída y reinicia el
+    # contenedor — cortando la búsqueda en curso con un 502.
+    #
+    # Se resuelve con concurrencia real DENTRO del único worker
+    # (--worker-class gthread --threads 4) en vez de sumar un segundo
+    # worker/proceso completo (--workers 2). Elegido gthread en vez de
+    # workers=2 porque:
+    #   - Memoria: un worker de más duplica el proceso ENTERO (Flask +
+    #     anthropic + gspread + google-auth + psycopg2, todo importado de
+    #     nuevo) — medido en local, ~78-84 MB por proceso. Un thread de más
+    #     dentro del mismo proceso comparte esos imports; solo suma su stack
+    #     (chico) y lo que esa request puntual retiene en memoria (~5-6 MB
+    #     medidos por búsqueda). 4 threads en 1 proceso ≈ mitad o menos que
+    #     2 procesos completos.
+    #   - Correcto sin cambios de código: database.py YA usa
+    #     psycopg2.pool.ThreadedConnectionPool (pensado para esto, con
+    #     maxconn=10 — de sobra para 4 threads) detrás de un
+    #     threading.Lock() — la capa de datos ya es thread-safe, no hay
+    #     nada que adaptar para pasar de 1 a N threads.
+    #   - Con 4 threads (no 2) queda margen real: 1 búsqueda larga + el
+    #     health check + un segundo usuario navegando, todo al mismo tiempo,
+    #     sin turnarse.
     #
     # --timeout 120: el default de gunicorn es 30s — un worker "silencioso"
     # (sin heartbeat) más de ese tiempo se mata con SIGKILL, y el log de esa
@@ -33,8 +51,9 @@ services:
     # del servidor de Anthropic, con reintentos por `pause_turn`) puede
     # perfectamente tardar más de 30s — medido en local, una búsqueda de UN
     # barrio tardó ~100s real. 120s da margen; si una búsqueda de "todo AMBA"
-    # (bastante más pesada) sigue muriendo, subir este número.
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120
+    # (bastante más pesada) sigue muriendo o el health check sigue fallando,
+    # subir este número.
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --worker-class gthread --threads 4 --timeout 120
     healthCheckPath: /login
     envVars:
       # ─── Secretos / config de producción — cargar a mano desde el dashboard

@@ -1,0 +1,46 @@
+# Render Blueprint — despliegue repetible con un clic.
+# Ver DEPLOY.md para el paso a paso completo (crear cuenta, conectar el repo,
+# cargar las variables de entorno marcadas `sync: false` desde el dashboard).
+#
+# Referencia: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: arrivata-sales-tool
+    runtime: python
+    plan: free
+    region: oregon
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    # Render inyecta el puerto a usar en $PORT — gunicorn tiene que bindear ahí,
+    # no a un puerto fijo (5001, el que usa app.py en dev, no aplica acá).
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
+    healthCheckPath: /login
+    envVars:
+      # ─── Secretos / config de producción — cargar a mano desde el dashboard
+      # de Render (Settings → Environment). `sync: false` evita que Render
+      # pida un valor default o lo commitee: queda en blanco hasta que el
+      # usuario lo carga con sus propias credenciales. Ver DEPLOY.md.
+      - key: DATABASE_URL
+        sync: false
+      - key: FLASK_SECRET_KEY
+        sync: false
+      - key: VIEWER_PASSWORD
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      # Opcionales — solo si se usa la sincronización con Google Sheets.
+      # Sin esto, la app funciona igual (dashboard, mapa, IA, CRM) sin Sheets.
+      - key: GOOGLE_CREDENTIALS_JSON
+        sync: false
+      - key: SHEETS_CSV_URL
+        sync: false
+      - key: SHEETS_SPREADSHEET_KEY
+        sync: false
+      - key: SHEETS_GID
+        sync: false
+      # ─── Config no-secreta, con valor fijo ──────────────────────────────
+      - key: FLASK_DEBUG
+        value: "0"
+      - key: PYTHON_VERSION
+        value: "3.11.9"

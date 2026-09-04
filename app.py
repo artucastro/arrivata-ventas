@@ -13,15 +13,20 @@ from flask_login import (current_user, login_user, logout_user,
 import auth
 import database as db
 import scoring as sc
-from config_manager import load_config, save_config
+from config_manager import load_config, save_config, materialize_credentials_from_env
 from geocoding import geocode
 
 # Carga el .env de la carpeta del proyecto sin importar el working directory
-# (necesario cuando corre bajo un servidor WSGI, p. ej. PythonAnywhere).
+# (necesario cuando corre bajo un servidor WSGI, p. ej. gunicorn en Render).
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"), override=True)
 
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "arrivata-secret-2024")
+
+# Filesystem efímero (Render free tier): si el JSON de credenciales de Google
+# viene por variable de entorno, lo escribe a disco ANTES de que cualquier
+# ruta lo necesite. No-op si la variable no está seteada. Ver config_manager.py.
+materialize_credentials_from_env()
 
 db.init_db()
 
@@ -756,6 +761,10 @@ def api_geocode():
 
 
 if __name__ == '__main__':
-    debug = os.getenv("FLASK_DEBUG", "1") == "1"
+    # Default "0" (apagado) — este bloque solo corre con `python app.py` (dev
+    # server de Flask); bajo gunicorn en producción nunca se ejecuta, pero el
+    # default seguro evita levantar el debugger interactivo (ejecución de
+    # código arbitrario) si alguien corre esto en un server sin setear la var.
+    debug = os.getenv("FLASK_DEBUG", "0") == "1"
     print("\n  Arrivata Sales Tool corriendo en: http://localhost:5001\n")
     app.run(debug=debug, host='127.0.0.1', port=5001)

@@ -1,67 +1,90 @@
-# Deploy en PythonAnywhere (gratis)
+# Deploy en Render (gratis)
 
-Objetivo: tener la app en `https://TU_USUARIO.pythonanywhere.com`, con login,
-usándola desde cualquier dispositivo, con la base de datos persistente.
+Objetivo: tener la app en `https://arrivata-sales-tool.onrender.com` (o el
+nombre que elijas), con login, usable desde cualquier dispositivo, con la
+base de datos persistente en Postgres (Neon).
 
-> En el plan gratis funciona todo **menos la búsqueda con IA** (PythonAnywhere no
-> deja llamar a la API de Anthropic). El geocoding y Google Sheets sí funcionan.
+> Se usa Render y no PythonAnywhere porque el plan gratis de PythonAnywhere
+> no puede conectarse a bases de datos externas (como nuestro Postgres de
+> Neon) — solo permite salir a una whitelist corta de hosts. Render sí lo
+> permite en su plan gratis.
 
 ---
 
-## 1. Crear la cuenta
+## Antes de empezar: el trade-off del plan gratis — "sleep"
 
-1. Entrá a https://www.pythonanywhere.com/registration/register/beginner/
-2. Elegí un usuario (será tu subdominio: `usuario.pythonanywhere.com`). Sugerencia: `artucastro`.
-3. Confirmá el mail.
+Un web service gratis de Render se **duerme después de 15 minutos sin
+tráfico**. El primer acceso después de eso (alguien abre la app, o vos
+mismo al día siguiente) tarda unos **30-40 segundos en responder** mientras
+el contenedor arranca de nuevo — después de eso anda normal hasta el
+próximo período de 15 minutos sin uso.
 
-## 2. Traer el código
+Esto es una **decisión consciente para arrancar sin costo**, no un bug ni
+algo para "arreglar". Si en el uso diario del equipo comercial esos 30-40
+segundos ocasionales molestan, la solución es pasar el servicio al plan
+**Starter (~US$7/mes)** desde el dashboard de Render — sin cambiar una
+línea de código, sin volver a desplegar nada. Starter no duerme el
+servicio.
 
-En **Consoles → Bash** (consola nueva):
+Además, el plan gratis **no tiene disco persistente**: cualquier archivo
+escrito en tiempo de ejecución (no en el repo) se pierde en cada
+reinicio/redeploy, incluido cada "despertar" tras dormirse. Esto no afecta
+a la base de datos (vive en Neon, un servicio aparte) pero sí a la
+integración con Google Sheets — ver la sección dedicada más abajo.
 
-```bash
-git clone https://github.com/artucastro/arrivata-ventas.git
-cd arrivata-ventas
-mkvirtualenv --python=/usr/bin/python3.11 arrivata
-pip install -r requirements.txt
-```
+---
 
-(La última línea tarda 1-2 min.)
+## 1. Crear la cuenta y conectar el repo
 
-## 3. Crear el archivo `.env` en el servidor
+1. Entrá a https://dashboard.render.com/register y creá una cuenta
+   (podés usar "Sign up with GitHub" para conectar el repo en el mismo paso).
+2. Si tu cuenta de GitHub no está conectada todavía: **Account Settings →
+   GitHub** → autorizá acceso al repo `artucastro/arrivata-ventas`.
 
-Todavía en la consola Bash, dentro de `~/arrivata-ventas`:
+## 2. Desplegar con el Blueprint (`render.yaml`)
 
-```bash
-python -c "import secrets; print('FLASK_SECRET_KEY=' + secrets.token_hex(32))" > .env
-echo "VIEWER_PASSWORD=ELEGI_UNA_CLAVE"  >> .env
-echo "FLASK_DEBUG=0"                    >> .env
-echo "DATABASE_URL=postgresql://USER:PASSWORD@HOST/DBNAME?sslmode=require" >> .env
-nano .env   # cambiá ELEGI_UNA_CLAVE y pegá la DATABASE_URL real; Ctrl+O, Enter, Ctrl+X
-```
+Este repo incluye [`render.yaml`](render.yaml), que describe el servicio
+completo (build, arranque, variables de entorno). Con esto Render arma todo
+solo, en vez de configurar cada campo a mano desde el dashboard.
 
-`DATABASE_URL` es la conexión al PostgreSQL (p. ej. Neon). **Es obligatoria en la
-web**: con varios vendedores entrando a la vez, SQLite no sirve. Si se dejara sin
-definir, la app caería a SQLite local (solo para desarrollo).
+1. En el dashboard de Render: **New → Blueprint**.
+2. Elegí el repo `artucastro/arrivata-ventas` → rama `main`.
+3. Render detecta `render.yaml` y muestra el servicio `arrivata-sales-tool`
+   a crear, con sus variables de entorno **vacías** (las marcadas
+   `sync: false` en el archivo — a propósito: un secreto nunca vive
+   committeado en el repo). Antes de confirmar, Render te deja completarlas
+   ahí mismo; si preferís hacerlo después, podés dejarlas en blanco por
+   ahora y cargarlas en el paso 3.
+4. Confirmá la creación. Render va a intentar el primer deploy — probablemente
+   falle o quede en un estado raro hasta que completes las variables
+   obligatorias del paso 3, es esperable.
 
-`VIEWER_PASSWORD` es la contraseña única de solo lectura (sin usuario) para el
-resto de la empresa. Las cuentas completas de Arturo y Emmanuel NO van en el
-`.env` — se crean con `scripts/manage_users.py` (ver sección siguiente).
+## 3. Cargar las variables de entorno
 
-## 4. Cargar la base de datos
+En el dashboard del servicio recién creado: **Environment** → agregá (o
+completá, si ya las viste en el paso 2):
 
-La primera vez, migrá los datos de tu `arrivata.db` local al Postgres. **Desde tu
-PC** (con la misma `DATABASE_URL` en tu `.env`):
+| Variable | Obligatoria | De dónde sale |
+|---|---|---|
+| `DATABASE_URL` | Sí | Connection string de tu proyecto en [Neon](https://console.neon.tech) — `postgresql://USER:PASSWORD@HOST/DBNAME?sslmode=require`. La misma que ya usás en tu `.env` local. |
+| `FLASK_SECRET_KEY` | Sí | Una clave larga y random, propia de producción (no reuses la de tu `.env` local). Generarla: `python -c "import secrets; print(secrets.token_hex(32))"` |
+| `VIEWER_PASSWORD` | Sí | La contraseña única de "solo lectura" que le vas a pasar al resto del equipo comercial (sin usuario propio). Elegí una vos. |
+| `ANTHROPIC_API_KEY` | Sí, para que ande la búsqueda con IA | Tu API key de Anthropic (la misma que usás localmente). |
+| `GOOGLE_CREDENTIALS_JSON` | Solo si usás sincronización con Sheets | Ver sección "Google Sheets" abajo. |
+| `SHEETS_CSV_URL` | Solo si usás importar desde Sheets | Ver sección "Google Sheets" abajo. |
+| `SHEETS_SPREADSHEET_KEY` / `SHEETS_GID` | Solo si usás sincronizar hacia Sheets | Ver sección "Google Sheets" abajo. |
 
-```bash
-python scripts/migrate_sqlite_to_postgres.py
-```
+`FLASK_DEBUG` **no** hace falta cargarla a mano: `render.yaml` ya la fija en
+`"0"` (apagada) para todo despliegue de producción — esto es, de paso, la
+resolución del punto viejo de "debug=True sin apagar" del backlog técnico.
 
-El esquema de la tabla lo crea la propia app al arrancar (`db.init_db()` aplica
-`migrations/*.sql`, todas idempotentes). En adelante la base vive en Postgres:
-no hay archivo `.db` que subir ni respaldar en el server.
+Guardá. Render redespliega solo cada vez que cambiás una variable.
 
-Creá tu cuenta y la de Emmanuel (desde tu PC, con la `DATABASE_URL` de producción
-en tu `.env` local, o en la consola Bash de PythonAnywhere con el `.env` del server):
+Las cuentas completas (usuario + contraseña) de Arturo y Emmanuel **no** son
+variables de entorno — se crean como en local, con `scripts/manage_users.py`,
+apuntando **desde tu PC** a la `DATABASE_URL` de producción (poné esa misma
+`DATABASE_URL` en tu `.env` local un momento, corré el script, y volvé a
+dejar tu `.env` como estaba si desarrollás contra otra base):
 
 ```bash
 python scripts/manage_users.py create arturo
@@ -69,55 +92,90 @@ python scripts/manage_users.py create emmanuel
 ```
 Pide la contraseña de forma oculta (no queda en el historial de la terminal).
 
-## 5. Crear la Web App
+## 4. Cargar los datos (primera vez)
 
-1. Pestaña **Web** → **Add a new web app** → **Next**.
-2. Elegí **Manual configuration** (¡NO "Flask"!) → **Python 3.11** → **Next**.
-3. Cuando termine, en esa misma pestaña Web configurá:
-   - **Source code:** `/home/TU_USUARIO/arrivata-ventas`
-   - **Working directory:** `/home/TU_USUARIO/arrivata-ventas`
-   - **Virtualenv:** escribí `arrivata` (se autocompleta a `/home/TU_USUARIO/.virtualenvs/arrivata`)
-4. Click en el link del **WSGI configuration file** (arriba). Borrá todo el contenido y
-   pegá el de `wsgi_pythonanywhere.py` de este repo, cambiando `USER` si tu usuario no es `artucastro`. Guardá.
-5. Botón verde grande **Reload**.
+Si `DATABASE_URL` apunta a un Neon que ya tiene los prospectos cargados
+(el mismo que ya usás en local), no hay nada que migrar — la app usa esa
+base tal cual, el esquema lo mantiene al día ella sola
+(`db.init_db()` aplica `migrations/*.sql`, todas idempotentes, en cada
+arranque).
 
-## 6. Probar
+Si arrancás de cero, migrá tu `arrivata.db` local una sola vez **desde tu
+PC** (con la `DATABASE_URL` de producción en tu `.env` local):
 
-Abrí `https://TU_USUARIO.pythonanywhere.com` → te lleva a `/login` → entrá con tu
-cuenta (usuario + contraseña, la que creaste en el paso 4) y vas a ver el dashboard.
-Al resto de la empresa le pasás la pestaña "Solo lectura" del login + `VIEWER_PASSWORD`.
+```bash
+python scripts/migrate_sqlite_to_postgres.py
+```
+
+## 5. Probar
+
+Abrí la URL que Render te asignó (visible arriba a la izquierda del
+dashboard del servicio, termina en `.onrender.com`) → te lleva a `/login` →
+entrá con tu cuenta (usuario + contraseña, la que creaste en el paso 3) y
+vas a ver el dashboard. Al resto de la empresa le pasás la pestaña "Solo
+lectura" del login + `VIEWER_PASSWORD`.
+
+Si el servicio estaba dormido, esta primera carga tarda 30-40 segundos —
+ver la nota del principio.
 
 ---
 
 ## Google Sheets (opcional)
 
-En **Files**, subí a `/home/TU_USUARIO/arrivata-ventas/`:
-- `config.json`
-- `credentials/google_credentials.json` (crear la carpeta `credentials` primero con **New directory**)
+La integración con Sheets tiene dos partes independientes, y el plan
+gratis de Render (sin disco persistente) las afecta distinto:
 
-Editá `config.json` (botón lápiz) y poné la ruta **absoluta**:
+**Leer desde Sheets** ("Importar desde Sheets") solo necesita la URL
+pública del spreadsheet publicado como CSV — no un archivo de
+credenciales. Cargá esa URL en la variable de entorno `SHEETS_CSV_URL`
+(y `SHEETS_SPREADSHEET_KEY`/`SHEETS_GID` si además vas a sincronizar
+hacia el spreadsheet, ver abajo) en vez de cargarla desde la pestaña
+`/sheets` de la app: lo que se guarda ahí vive en un archivo
+(`config.json`) que Render **descarta en cada reinicio/redeploy** — con
+la variable de entorno sobrevive siempre, sin tener que volver a
+cargarla nunca.
 
-```json
-"sheets_credentials_path": "/home/TU_USUARIO/arrivata-ventas/credentials/google_credentials.json"
-```
+**Escribir en Sheets** ("Probar conexión", "Sincronizar todo") sí necesita
+un archivo de credenciales de cuenta de servicio de Google
+(`credentials/google_credentials.json`). En PythonAnywhere esto se subía
+a mano por la pestaña Files; en Render no existe eso ni tendría sentido
+(se perdería en el próximo reinicio). En cambio:
 
-Reload.
+1. Abrí tu `credentials/google_credentials.json` local en un editor de texto,
+   copiá **todo** el contenido (es un JSON de una sola pieza, con `{` y `}`).
+2. Pegalo tal cual, completo, como valor de la variable de entorno
+   `GOOGLE_CREDENTIALS_JSON` en el dashboard de Render.
+3. Guardá. En cada arranque, la app escribe ese contenido a
+   `credentials/google_credentials.json` antes de atender cualquier
+   pedido (ver `config_manager.materialize_credentials_from_env()`) — así
+   sigue disponible después de dormir/despertar o de cada redeploy, sin
+   volver a subir nada a mano.
+
+Si no vas a usar Sheets, dejá las 4 variables (`GOOGLE_CREDENTIALS_JSON`,
+`SHEETS_CSV_URL`, `SHEETS_SPREADSHEET_KEY`, `SHEETS_GID`) sin cargar — el
+resto de la app (dashboard, mapa, CRM, búsqueda con IA) funciona igual.
+
+---
 
 ## Actualizar la app más adelante
 
-Cuando pusheás cambios a GitHub, en la consola Bash:
-
-```bash
-cd ~/arrivata-ventas && git pull
-```
-
-y **Reload** en la pestaña Web.
+Por default, Render redespliega solo cada vez que se pushea a `main` en
+GitHub (auto-deploy). No hace falta ningún paso manual — a los pocos
+minutos del push, el cambio ya está en producción. Podés desactivar esto
+por servicio en **Settings → Build & Deploy** si preferís desplegar a mano
+con el botón **Manual Deploy**.
 
 ## Cosas a saber del plan gratis
 
-- Cada ~3 meses PythonAnywhere te manda un mail para "extender" la cuenta: es un click, sigue gratis.
-- La búsqueda IA no funciona (whitelist de PythonAnywhere). Corré esas búsquedas desde tu PC.
-- Si el geocoding de prospectos nuevos falla, puede ser que `nominatim.openstreetmap.org`
-  no esté en la whitelist: pedí que lo agreguen desde el foro de PythonAnywhere, o
-  geocodificá desde tu PC y sincronizá por Sheets.
-- La contraseña la cambiás editando `.env` y haciendo Reload.
+- El servicio se duerme tras 15 min sin tráfico; el primer acceso después
+  tarda 30-40s (ver nota al principio). Upgrade a Starter (~US$7/mes) para
+  sacarlo, sin cambios de código.
+- Sin disco persistente: cualquier archivo escrito en tiempo de ejecución
+  (subida por `/sheets`, `config.json` guardado desde la UI) se pierde en
+  cada reinicio. Usá las variables de entorno de la sección Google Sheets
+  arriba en vez de la carga por UI para que sobreviva.
+- 750 horas/mes gratis compartidas entre todos tus servicios free — de
+  sobra para un solo servicio, aunque nunca durmiera.
+- La API de Anthropic (búsqueda con IA) no tiene ninguna restricción de
+  salida en Render (a diferencia de PythonAnywhere, que la bloqueaba en el
+  plan gratis) — anda igual que en local.

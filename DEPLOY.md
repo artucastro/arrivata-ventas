@@ -179,3 +179,11 @@ con el botón **Manual Deploy**.
 - La API de Anthropic (búsqueda con IA) no tiene ninguna restricción de
   salida en Render (a diferencia de PythonAnywhere, que la bloqueaba en el
   plan gratis) — anda igual que en local.
+- Solo 512 MB de RAM. `render.yaml` fija `--workers 1` a propósito (más de
+  un worker multiplica el footprint entero de la app en memoria) y
+  `--timeout 120` (una búsqueda con IA puede tardar minuto y medio o más;
+  el default de gunicorn, 30s, la mataría a mitad de camino). Si en el
+  dashboard de Render (**Settings → Start Command**, o una env var
+  `WEB_CONCURRENCY`) hay algo puesto a mano que pise este `startCommand`,
+  eso gana por sobre lo que diga `render.yaml` — revisar ahí primero si
+  vuelve a aparecer un `Worker was sent SIGKILL!` en los logs.

@@ -14,7 +14,27 @@ services:
     buildCommand: pip install -r requirements.txt
     # Render inyecta el puerto a usar en $PORT — gunicorn tiene que bindear ahí,
     # no a un puerto fijo (5001, el que usa app.py en dev, no aplica acá).
-    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
+    #
+    # --workers 1: en 512 MB de RAM (plan free) y con solo 2 usuarios reales,
+    # un único worker alcanza de sobra — sin --workers, gunicorn ya default
+    # a 1 salvo que la env var WEB_CONCURRENCY diga otra cosa (revisar el
+    # dashboard de Render por las dudas: Settings → Start Command / Environment,
+    # un valor puesto ahí a mano pisa este startCommand). Fijarlo explícito acá
+    # es la forma más simple de blindarse contra cualquier sorpresa: sin
+    # concurrencia real entre requests, pero cada worker de más multiplica el
+    # footprint de memoria entero de la app (Flask + anthropic + gspread +
+    # google-auth + psycopg2 + su propio pool de conexiones a Postgres).
+    #
+    # --timeout 120: el default de gunicorn es 30s — un worker "silencioso"
+    # (sin heartbeat) más de ese tiempo se mata con SIGKILL, y el log de esa
+    # muerte ("was sent SIGKILL! Perhaps out of memory?") es genérico: dice
+    # lo mismo tanto si lo mató el timeout de gunicorn como si lo mató el OOM
+    # killer del SO — no distingue. Una búsqueda con IA (web_search del lado
+    # del servidor de Anthropic, con reintentos por `pause_turn`) puede
+    # perfectamente tardar más de 30s — medido en local, una búsqueda de UN
+    # barrio tardó ~100s real. 120s da margen; si una búsqueda de "todo AMBA"
+    # (bastante más pesada) sigue muriendo, subir este número.
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120
     healthCheckPath: /login
     envVars:
       # ─── Secretos / config de producción — cargar a mano desde el dashboard
